@@ -12,4 +12,8 @@ build/
 *.swp
 *.swo
 .DS_Store
-assets/
+datasets/
+logs/
+.mypy_cache/
+.pytest_cache/
+*.deps_installed

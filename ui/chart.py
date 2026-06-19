@@ -1,11 +1,9 @@
 import numpy as np
-import pandas as pd
+import ta
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.patches import FancyBboxPatch
 
 BG = "#1e1e2e"
 FG = "#cdd6f4"
@@ -56,18 +54,18 @@ def draw_candlestick(ax, df, last_n=60):
     ax.bar(dn["x"], dn["close"] - dn["low"], bottom=dn["low"],
            color=CANDLE_DN, width=0.15)
 
-    if "bb_high" in df.columns:
-        t = df.tail(last_n)
-        xs = np.arange(len(t))
-        ax.plot(xs, t["bb_high"].values, color=BLUE, alpha=0.3, linewidth=0.8)
-        ax.plot(xs, t["bb_low"].values, color=BLUE, alpha=0.3, linewidth=0.8)
-        ax.fill_between(xs, t["bb_high"].values, t["bb_low"].values,
-                        color=BLUE, alpha=0.05)
-
-    if "ema_20" in df.columns:
-        t = df.tail(last_n)
-        xs = np.arange(len(t))
-        ax.plot(xs, t["ema_20"].values, color=YELLOW, linewidth=1, label="EMA20")
+    if len(d) >= 20:
+        close = df["close"]
+        bb = ta.volatility.BollingerBands(close, window=20, window_dev=2)
+        ema20 = ta.trend.EMAIndicator(close, window=20).ema_indicator()
+        t_bb_high = bb.bollinger_hband().tail(last_n).values
+        t_bb_low = bb.bollinger_lband().tail(last_n).values
+        t_ema20 = ema20.tail(last_n).values
+        xs = np.arange(len(d))
+        ax.plot(xs, t_bb_high, color=BLUE, alpha=0.3, linewidth=0.8)
+        ax.plot(xs, t_bb_low, color=BLUE, alpha=0.3, linewidth=0.8)
+        ax.fill_between(xs, t_bb_high, t_bb_low, color=BLUE, alpha=0.05)
+        ax.plot(xs, t_ema20, color=YELLOW, linewidth=1, label="EMA20")
 
     ax.set_ylabel("Price", fontsize=9)
     ax.legend(loc="upper left", fontsize=7, facecolor=BG, edgecolor=GRID,
@@ -90,7 +88,10 @@ def draw_rsi(ax, df, last_n=60):
         return
     t = df.tail(last_n)
     xs = np.arange(len(t))
-    ax.plot(xs, t["rsi"].values, color=BLUE, linewidth=1.2)
+    rsi_vals = t["rsi"].values
+    if np.nanmax(rsi_vals) <= 1.5:
+        rsi_vals = rsi_vals * 100
+    ax.plot(xs, rsi_vals, color=BLUE, linewidth=1.2)
     ax.axhline(70, color=RED, linestyle="--", linewidth=0.7, alpha=0.7)
     ax.axhline(30, color=GREEN, linestyle="--", linewidth=0.7, alpha=0.7)
     ax.fill_between(xs, 30, 70, color=GRID, alpha=0.15)
@@ -124,7 +125,6 @@ def draw_equity(ax, eq_df):
     xs = np.arange(len(eq_df))
     vals = eq_df["equity"].values
     base = vals[0]
-    colors_fill = [GREEN if v >= base else RED for v in vals]
     ax.plot(xs, vals, color=BLUE, linewidth=1.5)
     ax.fill_between(xs, base, vals,
                     where=vals >= base, color=GREEN, alpha=0.15)

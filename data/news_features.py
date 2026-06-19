@@ -1,7 +1,7 @@
 import pandas as pd
-import numpy as np
 from data.news_fetcher import fetch_news, generate_sample_news
 from data.sentiment import score_batch, init
+from utils.config import NEWS
 
 
 def score_news_df(news_df):
@@ -14,7 +14,7 @@ def score_news_df(news_df):
     return news_df
 
 
-def daily_sentiment(news_df, shift=1):
+def daily_sentiment(news_df, shift=NEWS.sentiment_shift_days):
     if news_df is None or len(news_df) == 0:
         return pd.DataFrame(columns=["sentiment_avg", "sentiment_std", "news_volume"])
     g = news_df.groupby("date")
@@ -58,7 +58,7 @@ def merge_to_price(price_df, daily_sent, fill=True):
     return df
 
 
-def add_news_features(price_df, sym, src="auto", days=30, sample=False):
+def add_news_features(price_df, sym, src="crypto", days=NEWS.news_days, sample=False):
     init()
     span = len(price_df) + 5
     if sample:

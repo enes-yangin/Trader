@@ -1,36 +1,49 @@
+from typing import List, Optional, Dict, Literal, cast
 import numpy as np
 import pandas as pd
+import ccxt
 from data.fetcher import fetch, generate_sample
 from data.indicators import engineer, get_features
-from utils.config import SIGNAL_THRESH_BUY, SIGNAL_THRESH_SELL, USE_NEWS
+from models.base_model import BaseModel, dynamic_threshold
+from utils.config import SIGNAL
+from utils.logger import get_logger
+from utils.types import Bundle, ModelSignal, EnsembleSignal, FeatureSpec
+
+log = get_logger("predictor")
 
 
-def predict_single(mdl, df, with_news=USE_NEWS):
-    X = get_features(df, with_news=with_news).values
+def predict_single(mdl: BaseModel, df: pd.DataFrame,
+                    spec: Optional[FeatureSpec] = None) -> ModelSignal:
+    spec = spec or FeatureSpec.default()
+    X = get_features(df, spec=spec).values
     if hasattr(mdl, "predict_last"):
         pred = mdl.predict_last(X)
     else:
         pred = float(mdl.predict(X[-1:])[-1])
-    sig = mdl.signal(pred, buy_th=SIGNAL_THRESH_BUY, sell_th=SIGNAL_THRESH_SELL)
+    atr_pct = float(df["atr_pct"].iloc[-1]) if "atr_pct" in df.columns else 0.0
+    buy_th, sell_th = dynamic_threshold(atr_pct, SIGNAL.buy_threshold, SIGNAL.sell_threshold)
+    sig: ModelSignal = mdl.signal(pred, buy_th=buy_th, sell_th=sell_th)
     sig["model"] = mdl.name
     sig["last_close"] = float(df["close"].iloc[-1])
     sig["symbol"] = df.attrs.get("symbol", "N/A")
     return sig
 
 
-def predict_ensemble(models, df, with_news=USE_NEWS):
-    sigs = [predict_single(m, df, with_news=with_news) for m in models]
+def predict_ensemble(models: List[BaseModel], df: pd.DataFrame,
+                      spec: Optional[FeatureSpec] = None) -> EnsembleSignal:
+    spec = spec or FeatureSpec.default()
+    sigs = [predict_single(m, df, spec=spec) for m in models]
     preds = [s["predicted_return"] for s in sigs]
     avg_pred = float(np.mean(preds))
 
-    votes = {"BUY": 0, "SELL": 0, "HOLD": 0}
+    votes: Dict[str, float] = {"BUY": 0, "SELL": 0, "HOLD": 0}
     for s in sigs:
         votes[s["signal"]] += 1
-    consensus = max(votes, key=votes.get)
+    consensus = max(votes, key=lambda k: votes[k])
 
     avg_conf = float(np.mean([s["confidence"] for s in sigs]))
     return {
-        "consensus": consensus,
+        "consensus": cast(Literal["BUY", "HOLD", "SELL"], consensus),
         "avg_confidence": round(avg_conf, 1),
         "avg_predicted_return": round(avg_pred, 6),
         "votes": votes,
@@ -40,28 +53,39 @@ def predict_ensemble(models, df, with_news=USE_NEWS):
     }
 
 
-def predict_from_bundle(bundle):
+def spec_from_bundle(bundle: Bundle) -> FeatureSpec:
+    spec = bundle.get("spec")
+    if spec is not None:
+        return spec
+    return FeatureSpec.from_bools(
+        bundle.get("with_news", False),
+        bundle.get("with_micro", False),
+        bundle.get("with_cross_asset", False),
+    )
+
+
+def predict_from_bundle(bundle: Bundle) -> EnsembleSignal:
     df = bundle["df"]
-    wn = bundle.get("with_news", USE_NEWS)
+    spec = spec_from_bundle(bundle)
     models = [r["model"] for r in bundle["results"].values()]
-    ens = predict_ensemble(models, df, with_news=wn)
-    return ens
+    return predict_ensemble(models, df, spec=spec)
 
 
-def live_signal(sym, bundle, src="auto"):
-    wn = bundle.get("with_news", USE_NEWS)
+def live_signal(sym: str, bundle: Bundle, src: str = "crypto") -> EnsembleSignal:
+    spec = spec_from_bundle(bundle)
     sample = False
     try:
         df = fetch(sym, src=src)
-    except Exception:
+    except (ccxt.BaseError, ConnectionError, TimeoutError, OSError) as e:
+        log.warning(f"{sym}: live fetch failed ({type(e).__name__}: {e}), using sample data")
         df = generate_sample(sym)
         sample = True
-    df = engineer(df, sym=sym, with_news=wn, sample_news=sample)
+    df = engineer(df, sym=sym, spec=spec, sample_news=sample)
     models = [r["model"] for r in bundle["results"].values()]
-    return predict_ensemble(models, df, with_news=wn)
+    return predict_ensemble(models, df, spec=spec)
 
 
-def format_signal(sig):
+def format_signal(sig: EnsembleSignal) -> str:
     lines = [
         f"{'='*40}",
         f"  {sig['symbol']}  |  {sig['consensus']}  ({sig['avg_confidence']:.1f}%)",

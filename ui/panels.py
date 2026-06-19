@@ -104,7 +104,7 @@ class MetricsPanel(tk.Frame):
         if not bt_results:
             return
 
-        cols = ["Return", "Equity", "Trades", "WinRate", "Sharpe", "MaxDD"]
+        cols = ["Return", "Equity", "Trades", "WinRate", "Sharpe", "MaxDD", "Costs"]
         hdr = tk.Frame(self.container, bg=BG3)
         hdr.pack(fill="x", pady=(0, 2))
         tk.Label(hdr, text="Model", font=FONT_B, bg=BG3, fg=FG,
@@ -128,10 +128,65 @@ class MetricsPanel(tk.Frame):
                 (f"{m['win_rate']:.0f}%", GREEN if m["win_rate"] > 50 else FG2),
                 (f"{m['sharpe']:.2f}", BLUE),
                 (f"{m['max_drawdown']:.1f}%", RED if m["max_drawdown"] < -10 else FG2),
+                (f"${m['total_costs']:,.0f}", YELLOW),
             ]
             for txt, clr in vals:
                 tk.Label(row, text=txt, font=FONT, bg=BG2, fg=clr,
                          width=10, anchor="e").pack(side="left")
+
+
+class OrderBookPanel(tk.Frame):
+    def __init__(self, parent, **kw):
+        super().__init__(parent, bg=BG2, **kw)
+        hdr = tk.Frame(self, bg=BG2)
+        hdr.pack(fill="x", padx=10, pady=(8, 4))
+        tk.Label(hdr, text="Live Order Book", font=FONT_B, bg=BG2,
+                 fg=FG).pack(side="left")
+        tk.Label(hdr, text="L2 · rule-based", font=FONT_S, bg=BG2,
+                 fg=FG2).pack(side="left", padx=(6, 0))
+
+        self.lbl_state = tk.Label(self, text="—", font=FONT_B, bg=BG2, fg=FG2)
+        self.lbl_state.pack(anchor="w", padx=10)
+
+        self.bar_frame = tk.Frame(self, bg=BG2, height=18)
+        self.bar_frame.pack(fill="x", padx=10, pady=4)
+        self.bar_frame.pack_propagate(False)
+        self.bid_bar = tk.Frame(self.bar_frame, bg=GREEN)
+        self.bid_bar.place(relx=0, rely=0, relwidth=0.5, relheight=1)
+        self.ask_bar = tk.Frame(self.bar_frame, bg=RED)
+        self.ask_bar.place(relx=0.5, rely=0, relwidth=0.5, relheight=1)
+
+        self.detail = tk.Frame(self, bg=BG2)
+        self.detail.pack(fill="x", padx=10, pady=(0, 8))
+
+    def update(self, sig):
+        if not sig:
+            return
+        st = sig["state"]
+        c = GREEN if "BUY" in st else RED if "SELL" in st else YELLOW
+        self.lbl_state.config(text=f"{st}  ({sig['confidence']:.0f}%)", fg=c)
+
+        imb = sig["imbalance"]
+        bid_w = max(0.02, min(0.98, 0.5 + imb / 2))
+        self.bid_bar.place_configure(relwidth=bid_w)
+        self.ask_bar.place_configure(relx=bid_w, relwidth=1 - bid_w)
+
+        for w in self.detail.winfo_children():
+            w.destroy()
+        rows = [
+            ("Imbalance", f"{sig['imbalance']:+.4f}"),
+            ("Mid", f"{sig['mid_price']:,.2f}"),
+            ("Microprice", f"{sig['microprice']:,.2f}"),
+            ("Rel Spread", f"{sig['rel_spread']:.4%}"),
+            ("Walls", f"{sig['bid_walls']} bid / {sig['ask_walls']} ask"),
+        ]
+        for k, v in rows:
+            r = tk.Frame(self.detail, bg=BG2)
+            r.pack(fill="x")
+            tk.Label(r, text=k, font=FONT_S, bg=BG2, fg=FG2,
+                     width=12, anchor="w").pack(side="left")
+            tk.Label(r, text=v, font=FONT_S, bg=BG2, fg=FG,
+                     anchor="e").pack(side="left")
 
 
 class StatusBar(tk.Frame):
@@ -144,3 +199,31 @@ class StatusBar(tk.Frame):
     def set(self, msg):
         self.lbl.config(text=msg)
         self.update_idletasks()
+
+
+class NewsAnalysisPanel(tk.Frame):
+    def __init__(self, parent, **kw):
+        super().__init__(parent, bg=BG2, **kw)
+        hdr = tk.Frame(self, bg=BG2)
+        hdr.pack(fill="x", padx=10, pady=(8, 4))
+        tk.Label(hdr, text="News-Price Correlation", font=FONT_B, bg=BG2,
+                 fg=FG).pack(side="left")
+        tk.Label(hdr, text="sentiment vs forward return", font=FONT_S, bg=BG2,
+                 fg=FG2).pack(side="left", padx=(6, 0))
+
+        self.text = tk.Text(self, height=8, bg=BG3, fg=FG, font=FONT_S,
+                            wrap="none", relief="flat", padx=8, pady=6)
+        self.text.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+        self.text.config(state="disabled")
+
+    def update(self, report):
+        self.text.config(state="normal")
+        self.text.delete("1.0", "end")
+        if report:
+            self.text.insert("1.0", report)
+        else:
+            self.text.insert("1.0", "  (news analysis unavailable — enable News and re-run)")
+        self.text.config(state="disabled")
+
+    def clear(self):
+        self.update(None)

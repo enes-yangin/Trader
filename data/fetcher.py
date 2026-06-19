@@ -1,35 +1,52 @@
+import time
 import pandas as pd
 import ccxt
-import yfinance as yf
-from utils.config import (
-    EXCHANGE_ID, TIMEFRAME, OHLCV_LIMIT,
-    STOCK_PERIOD, STOCK_INTERVAL, DATE_COL
-)
+from utils.config import DATA, FEATURES
 
 
-def fetch_crypto(sym, tf=TIMEFRAME, lim=OHLCV_LIMIT):
-    ex = getattr(ccxt, EXCHANGE_ID)({"enableRateLimit": True})
+def fetch_crypto(sym, tf=DATA.timeframe, lim=DATA.ohlcv_limit):
+    ex = getattr(ccxt, DATA.exchange_id)({"enableRateLimit": True})
     raw = ex.fetch_ohlcv(sym, timeframe=tf, limit=lim)
-    df = pd.DataFrame(raw, columns=[DATE_COL, "open", "high", "low", "close", "volume"])
-    df[DATE_COL] = pd.to_datetime(df[DATE_COL], unit="ms")
-    df.set_index(DATE_COL, inplace=True)
+    df = pd.DataFrame(raw, columns=[FEATURES.date_col, "open", "high", "low", "close", "volume"])
+    df[FEATURES.date_col] = pd.to_datetime(df[FEATURES.date_col], unit="ms")
+    df.set_index(FEATURES.date_col, inplace=True)
     df = df.astype(float)
     df.attrs["symbol"] = sym
     df.attrs["source"] = "crypto"
     return df
 
 
-def fetch_stock(sym, period=STOCK_PERIOD, interval=STOCK_INTERVAL):
-    tk = yf.Ticker(sym)
-    df = tk.history(period=period, interval=interval)
-    df.index.name = DATE_COL
-    df.columns = [c.lower().replace(" ", "_") for c in df.columns]
-    keep = ["open", "high", "low", "close", "volume"]
-    df = df[[c for c in keep if c in df.columns]]
+def fetch_crypto_hist(sym, tf=DATA.timeframe, years=DATA.hist_years):
+    ex = getattr(ccxt, DATA.exchange_id)({"enableRateLimit": True})
+    ms_now = ex.milliseconds()
+    since = ms_now - years * 365 * 24 * 60 * 60 * 1000
+    all_rows = []
+    cursor = since
+    while True:
+        batch = ex.fetch_ohlcv(sym, timeframe=tf, since=cursor, limit=1000)
+        if not batch:
+            break
+        all_rows += batch
+        cursor = batch[-1][0] + 1
+        if len(batch) < 1000:
+            break
+        if cursor >= ms_now:
+            break
+        time.sleep(ex.rateLimit / 1000.0)
+    if not all_rows:
+        return fetch_crypto(sym, tf=tf)
+    df = pd.DataFrame(all_rows, columns=[FEATURES.date_col, "open", "high", "low", "close", "volume"])
+    df[FEATURES.date_col] = pd.to_datetime(df[FEATURES.date_col], unit="ms")
+    df = df.drop_duplicates(subset=[FEATURES.date_col])
+    df.set_index(FEATURES.date_col, inplace=True)
     df = df.astype(float)
     df.attrs["symbol"] = sym
-    df.attrs["source"] = "stock"
+    df.attrs["source"] = "crypto"
     return df
+
+
+def fetch_hist(sym, src="crypto", years=DATA.hist_years):
+    return fetch_crypto_hist(sym, years=years)
 
 
 def generate_sample(sym="SAMPLE", n=500):
@@ -51,9 +68,11 @@ def generate_sample(sym="SAMPLE", n=500):
     return df
 
 
-def fetch(sym, src="auto", **kw):
-    if src == "auto":
-        src = "crypto" if "/" in sym else "stock"
-    if src == "crypto":
-        return fetch_crypto(sym, **kw)
-    return fetch_stock(sym, **kw)
+def fetch(sym, src="crypto", **kw):
+    return fetch_crypto(sym, **kw)
+
+
+def fetch_live(sym, src="crypto"):
+    df = fetch_crypto(sym, tf=DATA.live_timeframe, lim=DATA.live_limit)
+    df.attrs["live"] = True
+    return df
