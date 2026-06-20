@@ -51,16 +51,16 @@ def fetch_hist(sym, src="crypto", years=DATA.hist_years):
 
 def generate_sample(sym="SAMPLE", n=500):
     import numpy as np
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     idx = pd.date_range(end=pd.Timestamp.now(), periods=n, freq="D")
-    p = 100 + np.cumsum(np.random.randn(n) * 2)
+    p = 100 + np.cumsum(rng.standard_normal(n) * 2)
     p = np.abs(p) + 10
     df = pd.DataFrame({
-        "open": p + np.random.randn(n) * 0.5,
-        "high": p + np.abs(np.random.randn(n)) * 2,
-        "low": p - np.abs(np.random.randn(n)) * 2,
+        "open": p + rng.standard_normal(n) * 0.5,
+        "high": p + np.abs(rng.standard_normal(n)) * 2,
+        "low": p - np.abs(rng.standard_normal(n)) * 2,
         "close": p,
-        "volume": np.random.randint(1000, 100000, n).astype(float),
+        "volume": rng.integers(1000, 100000, n).astype(float),
     }, index=idx)
     df.index.name = "date"
     df.attrs["symbol"] = sym

@@ -26,12 +26,18 @@ def _norm_date(ts):
         return pd.to_datetime(ts).tz_localize(None).normalize()
     except (ValueError, TypeError):
         try:
-            return pd.to_datetime(ts, utc=True).tz_localize(None).normalize()
+            return pd.to_datetime(ts, utc=True).tz_convert(None).normalize()
         except (ValueError, TypeError):
             return pd.NaT
 
 
+_rss_cache = {}
+
+
 def fetch_rss(src="crypto", limit=50):
+    if src in _rss_cache:
+        log.debug(f"Returning cached RSS feed for source: {src}")
+        return _rss_cache[src]
     feeds = RSS_FEEDS.get(src, RSS_FEEDS["crypto"])
     rows = []
     for url in feeds:
@@ -56,6 +62,7 @@ def fetch_rss(src="crypto", limit=50):
     df = pd.DataFrame(rows)
     if len(df) > 0:
         df = df.dropna(subset=["date"])
+    _rss_cache[src] = df
     return df
 
 
@@ -126,7 +133,7 @@ def fetch_news(sym, src="crypto", days=30, use_newsapi=True, use_rss=True):
 
 def generate_sample_news(sym="BTC", n=60):
     import numpy as np
-    np.random.seed(7)
+    rng = np.random.default_rng(7)
     idx = pd.date_range(end=pd.Timestamp.now().normalize(), periods=n, freq="D")
     pos = ["surges to record high", "sees strong institutional inflow",
            "rallies on positive outlook", "beats market expectations"]
@@ -135,8 +142,8 @@ def generate_sample_news(sym="BTC", n=60):
     neu = ["holds steady", "trades sideways", "shows mixed signals"]
     rows = []
     for d in idx:
-        k = np.random.choice([0, 1, 2], p=[0.4, 0.3, 0.3])
+        k = rng.choice([0, 1, 2], p=[0.4, 0.3, 0.3])
         pool = [pos, neg, neu][k]
-        t = f"{sym} {np.random.choice(pool)}"
+        t = f"{sym} {rng.choice(pool)}"
         rows.append({"date": d, "title": t, "text": t, "source": "sample"})
     return pd.DataFrame(rows)

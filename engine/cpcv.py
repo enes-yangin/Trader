@@ -176,12 +176,13 @@ def _path_metrics(preds: FloatArray, y: FloatArray) -> PathMetrics:
     if n == 0:
         return PathMetrics(dir_acc=0.0, r2=0.0, sharpe=0.0, n=0)
 
-    dir_acc = float(np.mean(np.sign(p) == np.sign(t)))
+    mask = (p != 0) & (t != 0)
+    dir_acc = float(np.mean(np.sign(p[mask]) == np.sign(t[mask]))) if mask.any() else 0.0
 
     # A naive sign-following strategy: position = sign(prediction).
     pnl = np.sign(p) * t
     sd = float(pnl.std(ddof=1)) if n > 1 else 0.0
-    sharpe = float(pnl.mean() / sd) if sd > 0 else 0.0
+    sharpe = float(pnl.mean() / sd * np.sqrt(365)) if sd > 0 else 0.0
 
     ss_tot = float(((t - t.mean()) ** 2).sum())
     ss_res = float(((t - p) ** 2).sum())
@@ -280,5 +281,5 @@ def run_cpcv_model(df: pd.DataFrame, model_name: str, **kw: Any) -> CPCVResult:
         "linear": LinearModel, "xgboost": XGBModel, "lstm": LSTMModel,
     }
     cls = mp[model_name.lower()]
-    mk = {"epochs": MODEL.lstm_params["epochs"]} if model_name == "lstm" else {}
+    mk = {"epochs": MODEL.lstm_params["epochs"]} if model_name.lower() == "lstm" else {}
     return run_cpcv(df, cls, model_kw=mk, **kw)

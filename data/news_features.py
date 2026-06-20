@@ -39,11 +39,13 @@ def daily_sentiment(news_df, shift=NEWS.sentiment_shift_days):
 def merge_to_price(price_df, daily_sent, fill=True):
     attrs = dict(price_df.attrs)
     df = price_df.copy()
+    orig_index = df.index
     pidx = pd.to_datetime(df.index).normalize()
     df["_d"] = pidx
     ds = daily_sent.copy()
     ds.index = pd.to_datetime(ds.index).normalize()
     df = df.merge(ds, left_on="_d", right_index=True, how="left")
+    df.index = orig_index
     df.drop(columns=["_d"], inplace=True)
     cols = ["sentiment_avg", "sentiment_std", "news_volume", "sentiment_trend"]
     for c in cols:

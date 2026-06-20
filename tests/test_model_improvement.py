@@ -54,7 +54,8 @@ def test_optimization_reproducible_with_seed(synthetic_ohlcv):
 
 def test_rank_features_returns_all_features(synthetic_ohlcv):
     sp, df = _split(synthetic_ohlcv)
-    feature_names = list(get_features(df, with_news=False, with_micro=True).columns)
+    # B5: Use the same spec from split() to ensure feature count consistency
+    feature_names = list(get_features(df, spec=sp["spec"]).columns)
     ranked = rank_features(sp, feature_names)
 
     assert len(ranked) == len(feature_names)
@@ -75,7 +76,8 @@ def test_rank_features_dimension_mismatch_raises(synthetic_ohlcv):
 
 def test_select_top_k_reduces_features(synthetic_ohlcv):
     sp, df = _split(synthetic_ohlcv)
-    feature_names = list(get_features(df, with_news=False, with_micro=True).columns)
+    # B5: Use the same spec from split() for consistent feature count
+    feature_names = list(get_features(df, spec=sp["spec"]).columns)
     k = 5
     new_sp = select_top_k(sp, feature_names, k=k)
 
@@ -88,14 +90,14 @@ def test_select_top_k_reduces_features(synthetic_ohlcv):
 
 def test_select_top_k_caps_at_available_features(synthetic_ohlcv):
     sp, df = _split(synthetic_ohlcv)
-    feature_names = list(get_features(df, with_news=False, with_micro=True).columns)
+    feature_names = list(get_features(df, spec=sp["spec"]).columns)
     new_sp = select_top_k(sp, feature_names, k=1000)
     assert new_sp["X_tr"].shape[1] == len(feature_names)
 
 
 def test_selected_model_trains_on_reduced_features(synthetic_ohlcv):
     sp, df = _split(synthetic_ohlcv)
-    feature_names = list(get_features(df, with_news=False, with_micro=True).columns)
+    feature_names = list(get_features(df, spec=sp["spec"]).columns)
     new_sp = select_top_k(sp, feature_names, k=5)
 
     mdl = build_model("linear")
@@ -107,7 +109,7 @@ def test_selected_model_trains_on_reduced_features(synthetic_ohlcv):
 
 def test_format_importance_no_crash(synthetic_ohlcv):
     sp, df = _split(synthetic_ohlcv)
-    feature_names = list(get_features(df, with_news=False, with_micro=True).columns)
+    feature_names = list(get_features(df, spec=sp["spec"]).columns)
     ranked = rank_features(sp, feature_names)
     out = format_importance(ranked)
     assert "Feature Importance" in out
@@ -115,7 +117,7 @@ def test_format_importance_no_crash(synthetic_ohlcv):
 
 def test_compute_weights_sum_to_one(mock_ccxt_exchange):
     from unittest.mock import patch
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
     weights = compute_weights(bundle)
     assert abs(sum(weights.values()) - 1.0) < 1e-9
@@ -126,7 +128,7 @@ def test_compute_weights_sum_to_one(mock_ccxt_exchange):
 
 def test_compute_weights_better_model_gets_more_weight(mock_ccxt_exchange):
     from unittest.mock import patch
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
 
     for r in bundle["results"].values():
@@ -143,7 +145,7 @@ def test_compute_weights_better_model_gets_more_weight(mock_ccxt_exchange):
 
 def test_compute_weights_all_negative_falls_back_equal(mock_ccxt_exchange):
     from unittest.mock import patch
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
 
     for r in bundle["results"].values():
@@ -157,7 +159,7 @@ def test_compute_weights_all_negative_falls_back_equal(mock_ccxt_exchange):
 
 def test_predict_weighted_ensemble_valid_signal(mock_ccxt_exchange):
     from unittest.mock import patch
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
 
     sig = predict_weighted_ensemble(bundle)
@@ -170,7 +172,7 @@ def test_predict_weighted_ensemble_valid_signal(mock_ccxt_exchange):
 
 def test_format_weights_no_crash(mock_ccxt_exchange):
     from unittest.mock import patch
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
     weights = compute_weights(bundle)
     out = format_weights(weights)
@@ -179,7 +181,7 @@ def test_format_weights_no_crash(mock_ccxt_exchange):
 
 def test_invalid_ensemble_metric_raises(mock_ccxt_exchange):
     from unittest.mock import patch
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
     try:
         compute_weights(bundle, metric="bogus")

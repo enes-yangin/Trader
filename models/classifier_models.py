@@ -88,8 +88,10 @@ class XGBClassifierModel(BaseClassifier):
 def _align_proba(proba: np.ndarray, classes: np.ndarray) -> np.ndarray:
     """Reorder/pad probability columns to always be [SELL, HOLD, BUY] even if
     some class was absent from the training split."""
-    out = np.zeros((proba.shape[0], 3))
+    label_to_col = {label: i for i, label in enumerate(ALL_LABELS)}
+    out = np.zeros((proba.shape[0], len(ALL_LABELS)))
     for col, cls in enumerate(classes):
-        if int(cls) in ALL_LABELS:
-            out[:, int(cls)] = proba[:, col]
+        cls_int = int(cls)
+        if cls_int in label_to_col:
+            out[:, label_to_col[cls_int]] = proba[:, col]
     return out

@@ -1,6 +1,6 @@
 from data.indicators import engineer
 from engine.trainer import split
-from utils.config import SPLIT
+from utils.config import SPLIT, MODEL
 
 
 def test_split_ratios_match_config(synthetic_ohlcv):
@@ -8,12 +8,14 @@ def test_split_ratios_match_config(synthetic_ohlcv):
     sp = split(df, with_news=False, with_micro=True)
 
     n = len(df)
+    purge = MODEL.pred_horizon
     expected_tr = int(n * SPLIT.train_ratio)
     expected_va = int(n * (SPLIT.train_ratio + SPLIT.val_ratio))
 
-    assert len(sp["X_tr"]) == expected_tr
-    assert len(sp["X_val"]) == expected_va - expected_tr
-    assert len(sp["X_test"]) == n - expected_va
+    # A1/B6: Purging drops `purge` rows from the end of train and val
+    assert len(sp["X_tr"]) == expected_tr - purge
+    assert len(sp["X_val"]) == expected_va - expected_tr  # val unaffected by purge
+    assert len(sp["X_test"]) == n - expected_va + purge
 
 
 def test_split_is_chronological_no_overlap(synthetic_ohlcv):

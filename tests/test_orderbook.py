@@ -1,6 +1,15 @@
 from data.orderbook import (
-    best_prices, spread, microprice, signal, imbalance, generate_sample_ob
+    best_prices, spread, microprice, signal, imbalance, generate_sample_ob,
+    book_reliability, _resolve_state, OrderBookTracker,
 )
+
+
+def _book(bv, av, n=10, mid=100.0):
+    """Order book with `n` levels per side, each bid level holding `bv` and each
+    ask level `av`, so imbalance = (bv - av) / (bv + av) exactly."""
+    bids = [[mid * (1 - 0.001 * (i + 1)), bv] for i in range(n)]
+    asks = [[mid * (1 + 0.001 * (i + 1)), av] for i in range(n)]
+    return {"bids": bids, "asks": asks, "symbol": "X"}
 
 
 def test_best_prices_both_sides():
@@ -73,3 +82,85 @@ def test_signal_sell_pressure_detected():
 def test_imbalance_zero_volume_returns_zero():
     ob = {"bids": [[100, 0]], "asks": [[101, 0]], "symbol": "X"}
     assert imbalance(ob) == 0.0
+
+
+# ------------------------------------------------------------------ #
+# Honest confidence (no clamp-to-100 the moment threshold is crossed)  #
+# ------------------------------------------------------------------ #
+
+def test_confidence_is_honest_not_clamped():
+    # imbalance 0.4 must read ~40% confidence, NOT 100%.
+    sig = signal(_book(7, 3))  # (7-3)/10 = 0.4
+    assert abs(sig["imbalance"] - 0.4) < 1e-9
+    assert 35 <= sig["confidence"] <= 45
+
+
+def test_confidence_full_only_when_one_sided():
+    sig = signal(_book(10, 0))  # imbalance +1.0
+    assert sig["confidence"] == 100.0
+
+
+# ------------------------------------------------------------------ #
+# Thin-book guard                                                     #
+# ------------------------------------------------------------------ #
+
+def test_book_reliability_accepts_balanced_deep_book():
+    ok, bv, av = book_reliability(_book(10, 10))
+    assert ok
+
+
+def test_book_reliability_rejects_one_sided():
+    ok, _, _ = book_reliability(_book(10, 0.001))  # ask side ~empty
+    assert not ok
+
+
+def test_book_reliability_rejects_too_few_levels():
+    ok, _, _ = book_reliability(_book(10, 10, n=3))  # < min_side_levels
+    assert not ok
+
+
+# ------------------------------------------------------------------ #
+# Hysteresis state machine                                            #
+# ------------------------------------------------------------------ #
+
+def test_hysteresis_enters_and_holds_and_exits():
+    assert _resolve_state(0.4, "BALANCED") == "BUY PRESSURE"      # enter
+    assert _resolve_state(0.2, "BUY PRESSURE") == "BUY PRESSURE"  # hold in dead-band
+    assert _resolve_state(0.1, "BUY PRESSURE") == "BALANCED"      # exit below 0.15
+
+
+def test_hysteresis_no_direct_flip_buy_to_sell():
+    # From BUY, a mild negative must go to BALANCED first, not straight to SELL.
+    assert _resolve_state(-0.2, "BUY PRESSURE") == "BALANCED"
+    assert _resolve_state(-0.4, "BUY PRESSURE") == "SELL PRESSURE"
+
+
+# ------------------------------------------------------------------ #
+# Tracker: smoothing + hysteresis kill the whipsaw                    #
+# ------------------------------------------------------------------ #
+
+def test_tracker_smoothing_suppresses_whipsaw():
+    # Raw imbalance alternating +-0.5 every refresh WOULD flip BUY/SELL each
+    # tick. With EMA smoothing + hysteresis the state must never reach SELL.
+    tr = OrderBookTracker()
+    states = []
+    for raw in [0.5, -0.5, 0.5, -0.5, 0.5, -0.5]:
+        bv, av = (7.5, 2.5) if raw > 0 else (2.5, 7.5)
+        states.append(tr.update(_book(bv, av), sym="X")["state"])
+    assert "SELL PRESSURE" not in states, f"whipsaw not suppressed: {states}"
+
+
+def test_tracker_reports_thin_book_without_corrupting_state():
+    tr = OrderBookTracker()
+    tr.update(_book(8, 2), sym="X")            # reliable warm-up -> BUY-ish
+    sig = tr.update(_book(10, 0.001), sym="X")  # thin snapshot
+    assert sig["state"] == "THIN BOOK"
+    assert sig["confidence"] == 0.0
+    assert sig["reliable"] is False
+
+
+def test_tracker_reset_clears_state():
+    tr = OrderBookTracker()
+    tr.update(_book(9, 1), sym="X")
+    tr.reset()
+    assert tr._ema == {} and tr._state == {}

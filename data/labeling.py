@@ -28,11 +28,11 @@ def make_labels(df, h=None, threshold=0.0, atr_normalize=True):
     if atr_normalize and "atr_pct" in df.columns:
         band = threshold * df["atr_pct"] if threshold > 0 else df["atr_pct"] * 0.0
         excess = fwd
-        up = excess > band
-        down = excess < -band
+        up = (excess > band).fillna(False)
+        down = (excess < -band).fillna(False)
     else:
-        up = fwd > threshold
-        down = fwd < -threshold
+        up = (fwd > threshold).fillna(False)
+        down = (fwd < -threshold).fillna(False)
 
     labels = np.full(len(df), LABEL_HOLD, dtype=float)
     labels[up.values] = LABEL_BUY

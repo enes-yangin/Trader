@@ -16,6 +16,10 @@ def _spec_variants() -> Dict[str, FeatureSpec]:
     return {
         "technical_only": FeatureSpec(news=False, micro=False, cross_asset=False),
         "technical+micro": FeatureSpec(news=False, micro=True, cross_asset=False),
+        "technical+smooth": FeatureSpec(news=False, micro=False, cross_asset=False,
+                                         smooth=True),
+        "technical+reference": FeatureSpec(news=False, micro=False,
+                                            cross_asset=False, reference=True),
     }
 
 

@@ -4,7 +4,7 @@ from unittest.mock import patch
 def test_dataset_cache_separates_with_news_flag(mock_ccxt_exchange, isolated_cache_dir):
     from data import dataset
 
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         no_news = dataset.build("ETH/USDT", with_news=False, allow_sample=True)
         assert "sentiment_avg" not in no_news.columns
 
@@ -21,7 +21,7 @@ def test_dataset_cache_separates_with_news_flag(mock_ccxt_exchange, isolated_cac
 def test_dataset_has_cache_and_load_cached_respect_with_news(mock_ccxt_exchange, isolated_cache_dir):
     from data import dataset
 
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         dataset.build("BNB/USDT", with_news=False, allow_sample=True)
 
         assert dataset.has_cache("BNB/USDT", with_news=False) is True
@@ -37,7 +37,7 @@ def test_dataset_has_cache_and_load_cached_respect_with_news(mock_ccxt_exchange,
 def test_train_all_with_news_then_without_does_not_cross_contaminate(mock_ccxt_exchange, isolated_cache_dir):
     from engine.trainer import train_all
 
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         b_no_news = train_all("ADA/USDT", with_news=False, with_micro=True, allow_sample=True)
         assert "sentiment_avg" not in b_no_news["df"].columns
 

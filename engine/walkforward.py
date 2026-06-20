@@ -72,7 +72,11 @@ def run(df: pd.DataFrame, model_cls: Type[BaseModel],
         mdl.train(X[a:b], y[a:b])
         m = mdl.evaluate(X[c:d], y[c:d])
         preds, yt = _aligned_preds(mdl, X[c:d], y[c:d])
-        dir_acc = float(np.mean(np.sign(preds) == np.sign(yt))) if len(preds) else 0.0
+        if len(preds):
+            mask = (preds != 0) & (yt != 0)
+            dir_acc = float(np.mean(np.sign(preds[mask]) == np.sign(yt[mask]))) if mask.any() else 0.0
+        else:
+            dir_acc = 0.0
         rows.append({
             "window": k + 1,
             "train_start": idx[a].date(),
@@ -104,7 +108,7 @@ def run_model(df: pd.DataFrame, model_name: str, **kw: Any) -> WalkForwardResult
     from models.lstm_model import LSTMModel
     mp: Dict[str, Type[BaseModel]] = {"linear": LinearModel, "xgboost": XGBModel, "lstm": LSTMModel}
     cls = mp[model_name.lower()]
-    mk = {"epochs": MODEL.lstm_params["epochs"]} if model_name == "lstm" else {}
+    mk = {"epochs": MODEL.lstm_params["epochs"]} if model_name.lower() == "lstm" else {}
     return run(df, cls, model_kw=mk, **kw)
 
 

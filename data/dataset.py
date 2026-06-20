@@ -48,6 +48,8 @@ def ensure(sym: str, src: str = "crypto", years: int = DATA.hist_years, with_new
     if cache_policy.has_cached_dataset(sym, with_news):
         df = cache_policy.load_cached_dataset(sym, with_news)
         if df is not None:
+            if not cache_policy.is_dataset_fresh(sym, with_news):
+                log.warning(f"{sym}: returning stale cached dataset (with_news={with_news})")
             return df
     if on_first:
         on_first(sym, years)

@@ -64,8 +64,8 @@ def test_align_handles_missing_dates():
 
 
 def test_engineer_with_cross_asset_disabled_by_default(synthetic_ohlcv):
-    df = engineer(synthetic_ohlcv, with_news=False, with_micro=True)
-    X = get_features(df, with_news=False, with_micro=True)
+    df = engineer(synthetic_ohlcv, with_news=False, with_micro=True, with_cross_asset=False)
+    X = get_features(df, with_news=False, with_micro=True, with_cross_asset=False)
     for col in FEATURES.cross_asset_feature_cols:
         assert col not in X.columns
 
@@ -83,7 +83,7 @@ def test_train_all_with_cross_asset_enabled(mock_ccxt_exchange):
     from engine.trainer import train_all
     from data.indicators import get_features
 
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("SOL/USDT", with_news=False, with_cross_asset=True)
 
         assert bundle["with_cross_asset"] is True
@@ -91,6 +91,7 @@ def test_train_all_with_cross_asset_enabled(mock_ccxt_exchange):
         for col in FEATURES.cross_asset_feature_cols:
             assert col in X.columns
 
-        n_expected = 12 + 6 + 3
+        n_expected = len(FEATURES.feature_cols) + len(FEATURES.micro_feature_cols) + len(FEATURES.cross_asset_feature_cols)
         assert X.shape[1] == n_expected
-        assert bundle["split"]["X_tr"].shape[1] == n_expected
+        from utils.config import OPTIMIZATION
+        assert bundle["split"]["X_tr"].shape[1] == OPTIMIZATION.feature_selection_top_k

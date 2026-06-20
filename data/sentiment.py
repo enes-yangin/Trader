@@ -1,3 +1,4 @@
+import os
 import warnings
 import threading
 from utils.config import NEWS
@@ -32,8 +33,11 @@ def _quantize(model):
 
 def _load_transformer_pipeline(model_name):
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
-    tok = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    # HF_TOKEN raises the HuggingFace Hub rate limit for the one-time model
+    # download (anonymous requests get throttled / 429). None -> anonymous.
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    tok = AutoTokenizer.from_pretrained(model_name, token=token)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, token=token)
     model = _quantize(model)
     return pipeline("sentiment-analysis", model=model, tokenizer=tok,  # type: ignore[call-overload]
                     truncation=True, max_length=512)

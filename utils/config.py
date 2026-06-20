@@ -2,6 +2,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Tuple, Dict
 from utils.exceptions import ConfigError
+from utils.dotenv import load_dotenv
+
+# Load .env (project root) into os.environ before any config value is read,
+# so a user's HF_TOKEN / API keys / exchange choice take effect everywhere.
+load_dotenv()
 
 
 def _env_str(name, default):
@@ -37,7 +42,7 @@ def _env_bool(name, default):
 
 @dataclass(frozen=True)
 class DataConfig:
-    exchange_id: str = field(default_factory=lambda: _env_str("AI_TRADER_EXCHANGE", "binance"))
+    exchange_id: str = field(default_factory=lambda: _env_str("AI_TRADER_EXCHANGE", "kraken"))
     timeframe: str = "1d"
     ohlcv_limit: int = 500
     hist_years: int = field(default_factory=lambda: _env_int("AI_TRADER_HIST_YEARS", 5))
@@ -84,6 +89,7 @@ class FeatureConfig:
         "rsi", "macd_diff", "bb_pband",
         "atr_pct", "vol_chg", "vol_ratio",
         "ema20_dist", "sma50_dist", "ema_sma_dist",
+        "rsi_bull_div", "rsi_bear_div",
     )
     micro_feature_cols: Tuple[str, ...] = (
         "vol_delta", "amihud_illiq", "roll_spread",
@@ -95,10 +101,31 @@ class FeatureConfig:
     cross_asset_feature_cols: Tuple[str, ...] = (
         "eth_btc_chg", "btc_vol_share", "mkt_corr",
     )
+    smoothing_feature_cols: Tuple[str, ...] = (
+        "savgol_slope", "ema_slope",
+    )
+    reference_feature_cols: Tuple[str, ...] = (
+        "dxy_chg", "stable_dom_chg", "liquidity_chg", "oi_chg",
+        "funding_rate", "onchain_z", "fear_greed",
+    )
+    orderbook_feature_cols: Tuple[str, ...] = (
+        "depth_imbalance", "wall_persistence", "microprice_drift", "spread_regime",
+    )
+    macro_event_feature_cols: Tuple[str, ...] = (
+        "bars_to_next_event", "last_event_surprise", "event_importance", "event_day_flag",
+    )
+    social_feature_cols: Tuple[str, ...] = (
+        "social_volume_z", "social_sentiment_avg", "social_polarity_shift",
+    )
 
     use_micro: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_MICRO", True))
-    use_news: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_NEWS", True))
-    use_cross_asset: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_CROSS_ASSET", False))
+    use_news: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_NEWS", False))
+    use_cross_asset: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_CROSS_ASSET", True))
+    use_smoothing: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_SMOOTHING", True))
+    use_reference: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_REFERENCE", False))
+    use_orderbook: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_ORDERBOOK", True))
+    use_macro_events: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_MACRO_EVENTS", True))
+    use_social: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_SOCIAL", False))
 
     def __post_init__(self):
         if not self.feature_cols:
@@ -127,6 +154,56 @@ class CrossAssetConfig:
 
 
 @dataclass(frozen=True)
+class ReferenceSeriesConfig:
+    """External reference time-series (macro / derivatives / sentiment) merged
+    into the price frame by date. Every series is shifted forward by shift_days
+    so day-d's published value can only enter day-(d+shift) features -- the same
+    no-same-day-leak discipline as news sentiment."""
+    shift_days: int = 1
+    zscore_window: int = 30
+    dxy_clip: float = 0.1
+    dom_clip: float = 0.1
+    liquidity_clip: float = 0.1
+    oi_clip: float = 0.5
+    funding_clip: float = 0.01
+    onchain_clip: float = 5.0
+    fear_greed_clip: float = 1.0
+    cache_ttl_s: int = 3600  # B7: cache expiry (1 hour default)
+    request_timeout: int = 10
+    fear_greed_limit: int = 0  # 0 = full history (index-independent, cache-safe)
+
+    fear_greed_url: str = "https://api.alternative.me/fng/"
+    defillama_stables_url: str = "https://stablecoins.llama.fi/stablecoincharts/all"
+    fred_url: str = "https://api.stlouisfed.org/fred/series/observations"
+    coinmetrics_url: str = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics"
+    fred_api_key: str = field(default_factory=lambda: _env_str("FRED_API_KEY", ""))
+
+    def __post_init__(self):
+        if self.shift_days < 1:
+            raise ConfigError(
+                f"reference shift_days must be >= 1 to avoid same-day leak, "
+                f"got {self.shift_days}"
+            )
+        if self.zscore_window <= 1:
+            raise ConfigError(f"zscore_window must be > 1, got {self.zscore_window}")
+        clips = {
+            "dxy_clip": self.dxy_clip, "dom_clip": self.dom_clip,
+            "liquidity_clip": self.liquidity_clip, "oi_clip": self.oi_clip,
+            "funding_clip": self.funding_clip, "onchain_clip": self.onchain_clip,
+            "fear_greed_clip": self.fear_greed_clip,
+        }
+        for name, v in clips.items():
+            if v <= 0:
+                raise ConfigError(f"{name} must be positive, got {v}")
+        if self.cache_ttl_s <= 0:
+            raise ConfigError(f"cache_ttl_s must be positive, got {self.cache_ttl_s}")
+        if self.request_timeout <= 0:
+            raise ConfigError(f"request_timeout must be positive, got {self.request_timeout}")
+        if self.fear_greed_limit < 0:
+            raise ConfigError(f"fear_greed_limit must be >= 0, got {self.fear_greed_limit}")
+
+
+@dataclass(frozen=True)
 class IndicatorConfig:
     rsi_window: int = 14
     macd_fast: int = 12
@@ -145,6 +222,10 @@ class IndicatorConfig:
     kyle_lambda_window: int = 20
     vwap_window: int = 20
 
+    savgol_window: int = 11
+    savgol_polyorder: int = 3
+    ema_smooth_span: int = 10
+
     def __post_init__(self):
         windows = {
             "rsi_window": self.rsi_window, "macd_fast": self.macd_fast,
@@ -157,6 +238,8 @@ class IndicatorConfig:
             "roll_spread_window": self.roll_spread_window,
             "kyle_lambda_window": self.kyle_lambda_window,
             "vwap_window": self.vwap_window,
+            "savgol_window": self.savgol_window,
+            "ema_smooth_span": self.ema_smooth_span,
         }
         for name, val in windows.items():
             if val <= 0:
@@ -167,13 +250,22 @@ class IndicatorConfig:
             )
         if self.bb_dev <= 0:
             raise ConfigError(f"bb_dev must be positive, got {self.bb_dev}")
+        if self.savgol_window % 2 == 0:
+            raise ConfigError(
+                f"savgol_window must be odd, got {self.savgol_window}"
+            )
+        if self.savgol_polyorder >= self.savgol_window:
+            raise ConfigError(
+                f"savgol_polyorder ({self.savgol_polyorder}) must be < "
+                f"savgol_window ({self.savgol_window})"
+            )
 
 
 @dataclass(frozen=True)
 class SplitConfig:
-    train_ratio: float = 0.70
+    train_ratio: float = 0.60
     val_ratio: float = 0.15
-    test_ratio: float = 0.15
+    test_ratio: float = 0.25
     min_train_rows: int = 252
 
     def __post_init__(self):
@@ -199,7 +291,7 @@ class SignalConfig:
     confidence_scale: float = 50.0
     confidence_max: float = 99.0
     use_dynamic_threshold: bool = True
-    atr_mult: float = 0.5
+    atr_mult: float = 0.1
 
     def __post_init__(self):
         if self.buy_threshold <= 0:
@@ -242,6 +334,13 @@ class RiskConfig:
     kelly_fraction: float = 0.25
     kelly_min_trades: int = 5
 
+    # Kaldıraç / Likidasyon (Feature 4)
+    maintenance_margin: float = 0.005         # %0.5 (Binance BTC tipik değeri)
+    max_leverage: float = 10.0                # Maks kaldıraç
+    funding_rate_annual: float = 0.10         # Yıllık funding oranı (%10)
+    liquidation_buffer: float = 0.002         # Likidasyon fiyatına güvenlik buffer'ı
+    use_leverage: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_LEVERAGE", False))
+
     def __post_init__(self):
         if not (0 < self.stop_loss_pct < 1):
             raise ConfigError(f"stop_loss_pct must be in (0,1), got {self.stop_loss_pct}")
@@ -256,6 +355,12 @@ class RiskConfig:
             raise ConfigError(f"kelly_fraction must be in (0,1], got {self.kelly_fraction}")
         if self.kelly_min_trades < 1:
             raise ConfigError(f"kelly_min_trades must be >= 1, got {self.kelly_min_trades}")
+        if not (0 < self.maintenance_margin < 1):
+            raise ConfigError(f"maintenance_margin must be in (0,1), got {self.maintenance_margin}")
+        if self.max_leverage < 1:
+            raise ConfigError(f"max_leverage must be >= 1, got {self.max_leverage}")
+        if self.liquidation_buffer < 0:
+            raise ConfigError(f"liquidation_buffer must be >= 0, got {self.liquidation_buffer}")
 
 
 @dataclass(frozen=True)
@@ -264,7 +369,11 @@ class OrderbookConfig:
     imbalance_levels: int = 20
     wall_levels: int = 50
     wall_factor: float = 3.0
-    imbalance_threshold: float = 0.3
+    imbalance_threshold: float = 0.3      # enter a directional state above this
+    imbalance_exit_threshold: float = 0.15  # leave it only below this (hysteresis)
+    imbalance_smooth_alpha: float = 0.3   # EMA weight on the newest snapshot
+    min_side_levels: int = 5              # need >= this many levels per side
+    thin_book_ratio: float = 0.02         # weaker side must hold >= this of total
 
     def __post_init__(self):
         if self.depth <= 0 or self.imbalance_levels <= 0 or self.wall_levels <= 0:
@@ -275,6 +384,19 @@ class OrderbookConfig:
             raise ConfigError(
                 f"imbalance_threshold must be in (0,1), got {self.imbalance_threshold}"
             )
+        if not (0 <= self.imbalance_exit_threshold < self.imbalance_threshold):
+            raise ConfigError(
+                f"imbalance_exit_threshold must be in [0, imbalance_threshold), "
+                f"got {self.imbalance_exit_threshold}"
+            )
+        if not (0 < self.imbalance_smooth_alpha <= 1):
+            raise ConfigError(
+                f"imbalance_smooth_alpha must be in (0,1], got {self.imbalance_smooth_alpha}"
+            )
+        if self.min_side_levels < 1:
+            raise ConfigError(f"min_side_levels must be >= 1, got {self.min_side_levels}")
+        if not (0 <= self.thin_book_ratio < 0.5):
+            raise ConfigError(f"thin_book_ratio must be in [0, 0.5), got {self.thin_book_ratio}")
 
 
 @dataclass(frozen=True)
@@ -350,13 +472,13 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class OptimizationConfig:
-    linear_n_trials: int = 20
-    xgb_n_trials: int = 20
-    lstm_n_trials: int = 5
-    lstm_opt_epochs: int = 10
+    linear_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_LINEAR_N_TRIALS", 20))
+    xgb_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_XGB_N_TRIALS", 20))
+    lstm_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_LSTM_N_TRIALS", 5))
+    lstm_opt_epochs: int = field(default_factory=lambda: _env_int("AI_TRADER_LSTM_OPT_EPOCHS", 10))
     optuna_seed: int = 42
     feature_selection_top_k: int = 10
-    ensemble_weighted: bool = field(default_factory=lambda: _env_bool("AI_TRADER_WEIGHTED_ENSEMBLE", False))
+    ensemble_weighted: bool = field(default_factory=lambda: _env_bool("AI_TRADER_WEIGHTED_ENSEMBLE", True))
     ensemble_weight_metric: str = "val_r2"
 
     def __post_init__(self):
@@ -377,6 +499,7 @@ class OptimizationConfig:
 DATA = DataConfig()
 FEATURES = FeatureConfig()
 CROSS_ASSET = CrossAssetConfig()
+REFERENCE = ReferenceSeriesConfig()
 INDICATORS = IndicatorConfig()
 SPLIT = SplitConfig()
 SIGNAL = SignalConfig()
@@ -389,8 +512,8 @@ OPTIMIZATION = OptimizationConfig()
 
 
 def validate_all():
-    for cfg in (DATA, FEATURES, CROSS_ASSET, INDICATORS, SPLIT, SIGNAL, BACKTEST, RISK,
-                ORDERBOOK, NEWS, MODEL, OPTIMIZATION):
+    for cfg in (DATA, FEATURES, CROSS_ASSET, REFERENCE, INDICATORS, SPLIT, SIGNAL,
+                BACKTEST, RISK, ORDERBOOK, NEWS, MODEL, OPTIMIZATION):
         cfg.__post_init__()
     return True
 

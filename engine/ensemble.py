@@ -1,4 +1,5 @@
-from typing import Dict, Literal, cast
+from typing import Dict, Literal, cast, Optional
+import pandas as pd
 from engine.predictor import predict_single, spec_from_bundle
 from utils.config import OPTIMIZATION
 from utils.types import Bundle, WeightedEnsembleSignal
@@ -31,15 +32,18 @@ def compute_weights(bundle: Bundle, metric: str = OPTIMIZATION.ensemble_weight_m
 
 
 def predict_weighted_ensemble(bundle: Bundle,
-                               metric: str = OPTIMIZATION.ensemble_weight_metric) -> WeightedEnsembleSignal:
-    df = bundle["df"]
+                               metric: str = OPTIMIZATION.ensemble_weight_metric,
+                               df: Optional[pd.DataFrame] = None) -> WeightedEnsembleSignal:
+    if df is None:
+        df = bundle["df"]
     spec = spec_from_bundle(bundle)
     weights = compute_weights(bundle, metric=metric)
+    selected_features = bundle.get("split", {}).get("selected_features")
 
     sigs = []
     sig_weights = []
     for name, r in bundle["results"].items():
-        sig = predict_single(r["model"], df, spec=spec)
+        sig = predict_single(r["model"], df, spec=spec, selected_features=selected_features)
         sig["weight"] = round(weights[name], 4)
         sigs.append(sig)
         sig_weights.append(weights[name])
@@ -52,7 +56,7 @@ def predict_weighted_ensemble(bundle: Bundle,
         vote_scores[s["signal"]] += w
     consensus = max(vote_scores, key=lambda k: vote_scores[k])
 
-    return {
+    sig = {
         "consensus": cast(Literal["BUY", "HOLD", "SELL"], consensus),
         "avg_confidence": round(avg_conf, 1),
         "avg_predicted_return": round(avg_pred, 6),
@@ -62,6 +66,13 @@ def predict_weighted_ensemble(bundle: Bundle,
         "symbol": sigs[0]["symbol"],
         "weights": weights,
     }
+
+    meta_model = bundle.get("meta_model")
+    if meta_model is not None:
+        from engine.meta_labeling import filter_signal_with_meta
+        filter_signal_with_meta(sig, df, spec, meta_model, selected_features)
+
+    return sig
 
 
 def format_weights(weights: Dict[str, float]) -> str:

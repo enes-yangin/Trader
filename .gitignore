@@ -17,3 +17,12 @@ logs/
 .mypy_cache/
 .pytest_cache/
 *.deps_installed
+
+# Generated AI Reports
+plan.md
+review.md
+walkthrough.md
+bugs.md
+*_report.md
+new_perspectives_critique.md
+architecture_analysis_and_ideas.md

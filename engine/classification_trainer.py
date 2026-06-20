@@ -22,6 +22,9 @@ def build_classifier(name: str, **kw: Any) -> BaseClassifier:
     return cls(**kw)
 
 
+from engine.purging import purged_train_end
+
+
 def split_classification(df: pd.DataFrame, spec: FeatureSpec,
                           threshold: float = 0.5, atr_normalize: bool = True,
                           tr: float = SPLIT.train_ratio,
@@ -35,12 +38,18 @@ def split_classification(df: pd.DataFrame, spec: FeatureSpec,
     idx = df.index
     n = len(X)
     i_tr, i_va = int(n * tr), int(n * (tr + va))
+
+    # A1 & B6: Purge train and val endpoints to prevent forward-label leakage in classification splits
+    label_horizon = MODEL.pred_horizon
+    purged_i_tr = purged_train_end(0, i_tr, i_tr, label_horizon)
+    purged_i_va = purged_train_end(i_tr, i_va, i_va, label_horizon)
+
     return {
-        "X_tr": X[:i_tr], "y_tr": y[:i_tr],
-        "X_val": X[i_tr:i_va], "y_val": y[i_tr:i_va],
-        "X_test": X[i_va:], "y_test": y[i_va:],
-        "fwd_test": fwd_arr[i_va:],
-        "idx_test": idx[i_va:],
+        "X_tr": X[:purged_i_tr], "y_tr": y[:purged_i_tr],
+        "X_val": X[purged_i_tr:purged_i_va], "y_val": y[purged_i_tr:purged_i_va],
+        "X_test": X[purged_i_va:], "y_test": y[purged_i_va:],
+        "fwd_test": fwd_arr[purged_i_va:],
+        "idx_test": idx[purged_i_va:],
         "spec": spec,
     }
 
@@ -49,9 +58,16 @@ def train_classifier(sym: str, model_name: str, src: str = "crypto",
                       horizon: int = MODEL.pred_horizon, spec: Optional[FeatureSpec] = None,
                       with_news: bool = FEATURES.use_news, with_micro: bool = FEATURES.use_micro,
                       with_cross_asset: bool = FEATURES.use_cross_asset,
+                      with_smoothing: bool = FEATURES.use_smoothing,
+                      with_reference: bool = FEATURES.use_reference,
+                      with_orderbook: bool = FEATURES.use_orderbook,
+                      with_macro_events: bool = FEATURES.use_macro_events,
+                      with_social: bool = FEATURES.use_social,
                       threshold: float = 0.5, allow_sample: bool = False,
                       **kw: Any) -> Dict[str, Any]:
-    spec = _resolve_spec(spec, with_news, with_micro, with_cross_asset)
+    spec = _resolve_spec(spec, with_news, with_micro, with_cross_asset,
+                         with_smoothing, with_reference, with_orderbook,
+                         with_macro_events, with_social)
     df = load_data(sym, src=src, horizon=horizon, spec=spec, allow_sample=allow_sample)
     sp = split_classification(df, spec, threshold=threshold)
     mdl = build_classifier(model_name, **kw)

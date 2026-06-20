@@ -42,7 +42,7 @@ def test_single_model_pipeline_e2e(synthetic_ohlcv, model_name):
 
 
 def test_full_three_model_pipeline_e2e(mock_ccxt_exchange):
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
 
         assert set(bundle["results"].keys()) == {"linear", "xgboost", "lstm"}

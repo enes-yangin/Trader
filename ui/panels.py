@@ -61,6 +61,15 @@ class SignalCard(tk.Frame):
             tk.Label(self.frm_votes, text=f"{k}:{v}", font=FONT_S,
                      bg=BG2, fg=c).pack(side="left", padx=(0, 10))
 
+    def clear(self):
+        self.lbl_sym.config(text="---")
+        self.lbl_signal.config(text="---", fg=FG2)
+        self.lbl_conf.config(text="")
+        self.lbl_ret.config(text="")
+        self.lbl_price.config(text="")
+        for w in self.frm_votes.winfo_children():
+            w.destroy()
+
 
 class ModelDetailPanel(tk.Frame):
     def __init__(self, parent, **kw):
@@ -88,6 +97,10 @@ class ModelDetailPanel(tk.Frame):
                      fg=FG2, width=8).pack(side="left")
             tk.Label(f, text=f"{d['predicted_return']:+.4%}", font=FONT, bg=BG3,
                      fg=FG2).pack(side="left", padx=(4, 0))
+
+    def clear(self):
+        for w in self.container.winfo_children():
+            w.destroy()
 
 
 class MetricsPanel(tk.Frame):
@@ -133,6 +146,10 @@ class MetricsPanel(tk.Frame):
             for txt, clr in vals:
                 tk.Label(row, text=txt, font=FONT, bg=BG2, fg=clr,
                          width=10, anchor="e").pack(side="left")
+
+    def clear(self):
+        for w in self.container.winfo_children():
+            w.destroy()
 
 
 class OrderBookPanel(tk.Frame):
@@ -194,10 +211,16 @@ class StatusBar(tk.Frame):
         super().__init__(parent, bg=BG3, height=24, **kw)
         self.lbl = tk.Label(self, text="Ready", font=FONT_S, bg=BG3, fg=FG2)
         self.lbl.pack(side="left", padx=8)
+        self.lbl_accuracy = tk.Label(self, text="", font=FONT_S, bg=BG3, fg=GREEN)
+        self.lbl_accuracy.pack(side="right", padx=8)
         self.pack_propagate(False)
 
     def set(self, msg):
         self.lbl.config(text=msg)
+        self.update_idletasks()
+
+    def set_accuracy(self, text):
+        self.lbl_accuracy.config(text=text)
         self.update_idletasks()
 
 

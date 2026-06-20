@@ -57,9 +57,9 @@ class ClosedLot:
 
     @property
     def pnl_pct(self) -> float:
-        if self.cost_basis <= 0:
+        if self.cost_basis == 0:
             return 0.0
-        return self.pnl / self.cost_basis * 100
+        return self.pnl / abs(self.cost_basis) * 100
 
     @property
     def hold_days(self) -> float:

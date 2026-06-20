@@ -23,7 +23,9 @@ def naive_zero_r2(y):
 
 def directional_accuracy(preds, y):
     n = min(len(preds), len(y))
-    return float(np.mean(np.sign(preds[:n]) == np.sign(y[:n])))
+    p, t = preds[:n], y[:n]
+    mask = (p != 0) & (t != 0)
+    return float(np.mean(np.sign(p[mask]) == np.sign(t[mask]))) if mask.any() else 0.0
 
 
 def evaluate_symbol(sym, years, allow_sample):

@@ -98,16 +98,17 @@ def test_predict_single_high_atr_wide_band_stays_hold():
     from engine.predictor import predict_single
     from utils.types import FeatureSpec
 
-    pred = 0.03
+    pred = SIGNAL.buy_threshold + 0.01
     mdl = _ConstantModel(pred)
-    df = _df_with_atr(atr_pct_value=0.10)
+    atr_pct_val = (pred + 0.01) / SIGNAL.atr_mult
+    df = _df_with_atr(atr_pct_value=atr_pct_val)
 
     with patch("engine.predictor.get_features") as gf:
         gf.return_value.values = np.zeros((len(df), 12))
         sig = predict_single(mdl, df, spec=FeatureSpec.default())
 
     assert sig["signal"] == "HOLD"
-    assert pred < SIGNAL.atr_mult * 0.10
+    assert pred < SIGNAL.atr_mult * atr_pct_val
 
 
 def test_predict_single_no_atr_column_uses_fixed_threshold():

@@ -7,6 +7,9 @@ from utils.types import ClassMetrics, ClassTrainResult, ModelSignal
 from data.labeling import LABEL_SELL, LABEL_HOLD, LABEL_BUY
 
 
+ALL_LABELS = [LABEL_SELL, LABEL_HOLD, LABEL_BUY]
+
+
 class BaseClassifier(ABC):
     def __init__(self, name: str = "base_clf"):
         self.name = name
@@ -40,6 +43,12 @@ class BaseClassifier(ABC):
 
     def evaluate(self, X: np.ndarray, y: np.ndarray) -> ClassMetrics:
         preds = self.predict(X)
+        if len(preds) != len(y):
+            import logging
+            logging.getLogger(__name__).warning(
+                "Prediction/label length mismatch: %d vs %d. Truncating to shorter.",
+                len(preds), len(y),
+            )
         n = min(len(preds), len(y))
         preds, y = preds[:n], y[:n]
         labels = [LABEL_SELL, LABEL_HOLD, LABEL_BUY]
@@ -61,10 +70,11 @@ class BaseClassifier(ABC):
     def signal(self, X_last: np.ndarray, min_proba: float = 0.5) -> ModelSignal:
         proba = self.predict_proba(X_last.reshape(1, -1))[0]
         cls_idx = int(np.argmax(proba))
+        actual_label = ALL_LABELS[cls_idx]
         confidence = float(proba[cls_idx]) * 100
         label_to_cls = {LABEL_SELL: "SELL", LABEL_HOLD: "HOLD", LABEL_BUY: "BUY"}
-        sig_name = label_to_cls.get(cls_idx, "HOLD")
-        if cls_idx != LABEL_HOLD and proba[cls_idx] < min_proba:
+        sig_name = label_to_cls.get(actual_label, "HOLD")
+        if actual_label != LABEL_HOLD and proba[cls_idx] < min_proba:
             sig_name = "HOLD"
         return {
             "signal": sig_name,  # type: ignore[typeddict-item]

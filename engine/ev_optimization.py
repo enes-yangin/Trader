@@ -165,6 +165,7 @@ def _compute_ev(preds: npt.ArrayLike, proba: npt.ArrayLike,
         "avg_loss": avg_loss,
         "ev": ev,
         "sharpe": sharpe,
+        "per_trade": signed.tolist(),
     }
 
 
@@ -251,15 +252,8 @@ def ev_walkforward(df_engineered: pd.DataFrame, model_name: str,
             result.n_windows += 1
             continue
 
-        # Reconstruct per-trade returns from win/loss counts and avg magnitudes
-        # for Sharpe aggregation.  We accumulate them here, re-computing from
-        # masks is cleaner but would require passing raw arrays through.
-        n_wins = int(stats["wins"])
-        n_losses = int(stats["n_trades"]) - n_wins
-        per_trade: List[float] = (
-            [float(stats["avg_gain"]) - cost] * n_wins
-            + [-(float(stats["avg_loss"])) - cost] * n_losses
-        )
+        # Retrieve actual per-trade returns directly
+        per_trade = stats["per_trade"]
 
         result.n_windows += 1
         result.n_trades += int(stats["n_trades"])

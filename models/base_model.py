@@ -68,14 +68,19 @@ class BaseModel(ABC):
         scale = SIGNAL.confidence_scale
         cmax = SIGNAL.confidence_max
         sig: Literal["BUY", "HOLD", "SELL"]
+        EPS = 1e-9
         if pred > buy_th:
-            conf = min((pred - buy_th) / buy_th * scale, cmax)
+            denom = max(abs(buy_th), EPS)
+            conf = min((pred - buy_th) / denom * scale, cmax)
             sig = "BUY"
         elif pred < sell_th:
-            conf = min(abs(pred - sell_th) / abs(sell_th) * scale, cmax)
+            denom = max(abs(sell_th), EPS)
+            conf = min(abs(pred - sell_th) / denom * scale, cmax)
             sig = "SELL"
         else:
-            conf = max(0, (1 - abs(pred) / buy_th) * scale)
+            ref_th = abs(sell_th) if pred < 0 else buy_th
+            denom = max(abs(ref_th), EPS)
+            conf = max(0, (1 - abs(pred) / denom) * scale)
             sig = "HOLD"
         return {"signal": sig, "confidence": round(float(conf), 1), "predicted_return": round(float(pred), 6)}
 

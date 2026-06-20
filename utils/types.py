@@ -18,16 +18,34 @@ class FeatureSpec:
     news: bool = False
     micro: bool = False
     cross_asset: bool = False
+    smooth: bool = False
+    reference: bool = False
+    orderbook: bool = False
+    macro_events: bool = False
+    social: bool = False
 
     @classmethod
     def from_bools(cls, with_news: bool = False, with_micro: bool = False,
-                    with_cross_asset: bool = False) -> "FeatureSpec":
-        return cls(news=with_news, micro=with_micro, cross_asset=with_cross_asset)
+                    with_cross_asset: bool = False,
+                    with_smoothing: bool = False,
+                    with_reference: bool = False,
+                    with_orderbook: bool = False,
+                    with_macro_events: bool = False,
+                    with_social: bool = False) -> "FeatureSpec":
+        return cls(news=with_news, micro=with_micro, cross_asset=with_cross_asset,
+                   smooth=with_smoothing, reference=with_reference,
+                   orderbook=with_orderbook, macro_events=with_macro_events,
+                   social=with_social)
 
     @classmethod
     def default(cls) -> "FeatureSpec":
         from utils.config import FEATURES
-        return cls(news=FEATURES.use_news, micro=FEATURES.use_micro, cross_asset=FEATURES.use_cross_asset)
+        return cls(news=FEATURES.use_news, micro=FEATURES.use_micro,
+                   cross_asset=FEATURES.use_cross_asset, smooth=FEATURES.use_smoothing,
+                   reference=FEATURES.use_reference,
+                   orderbook=FEATURES.use_orderbook,
+                   macro_events=FEATURES.use_macro_events,
+                   social=FEATURES.use_social)
 
     def feature_columns(self) -> List[str]:
         from utils.config import FEATURES
@@ -38,6 +56,16 @@ class FeatureSpec:
             cols += list(FEATURES.cross_asset_feature_cols)
         if self.news:
             cols += list(FEATURES.news_feature_cols)
+        if self.smooth:
+            cols += list(FEATURES.smoothing_feature_cols)
+        if self.reference:
+            cols += list(FEATURES.reference_feature_cols)
+        if self.orderbook:
+            cols += list(FEATURES.orderbook_feature_cols)
+        if self.macro_events:
+            cols += list(FEATURES.macro_event_feature_cols)
+        if self.social:
+            cols += list(FEATURES.social_feature_cols)
         return cols
 
     @property
@@ -67,7 +95,7 @@ class _DictLike:
         setattr(self, key, value)
 
     def __contains__(self, key: str) -> bool:
-        return hasattr(self, key) and getattr(self, key) is not None
+        return key in getattr(self, "__dataclass_fields__", {})
 
     def get(self, key: str, default: Any = None) -> Any:
         return getattr(self, key, default)
@@ -154,6 +182,7 @@ class Bundle(_DictLike):
     with_cross_asset: bool = False
     spec: Optional[FeatureSpec] = None
     news_analysis: Optional[str] = None
+    meta_model: Optional[Any] = None
 
 
 # Backward-compatible alias: news_analysis is now an optional field on Bundle

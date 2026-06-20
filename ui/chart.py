@@ -89,7 +89,7 @@ def draw_rsi(ax, df, last_n=60):
     t = df.tail(last_n)
     xs = np.arange(len(t))
     rsi_vals = t["rsi"].values
-    if np.nanmax(rsi_vals) <= 1.5:
+    if np.nanmax(rsi_vals) <= 1.0:
         rsi_vals = rsi_vals * 100
     ax.plot(xs, rsi_vals, color=BLUE, linewidth=1.2)
     ax.axhline(70, color=RED, linestyle="--", linewidth=0.7, alpha=0.7)
@@ -104,9 +104,12 @@ def draw_signals(ax, trades_df, df, last_n=60):
         return
     d = df.tail(last_n).reset_index()
     start_date = df.index[-last_n] if len(df) >= last_n else df.index[0]
+    active_symbol = df.attrs.get("symbol")
 
     for _, tr in trades_df.iterrows():
         if "idx" not in tr or tr["idx"] < start_date:
+            continue
+        if "symbol" in tr and tr["symbol"] != active_symbol:
             continue
         mask = d["date"] == tr["idx"] if "date" in d.columns else None
         if mask is not None and mask.any():
@@ -152,6 +155,9 @@ class ChartWidget:
         for ax in self.axes:
             ax.clear()
         apply_style(self.fig, self.axes)
+
+        if eq_df is not None and len(eq_df) > 0:
+            last_n = len(eq_df)
 
         draw_candlestick(self.axes[0], df, last_n)
         if trades_df is not None:

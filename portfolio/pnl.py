@@ -35,7 +35,7 @@ def open_positions(trades: List[Trade]) -> List[PositionSummary]:
     for sym, lots in by_symbol.items():
         qty = sum(lot.qty for lot in lots)
         cost = sum(lot.qty * lot.price + lot.qty * lot.fee_per_unit for lot in lots)
-        avg_price = cost / qty if qty > 0 else 0.0
+        avg_price = cost / qty if qty > 1e-12 else 0.0
         out.append(PositionSummary(symbol=sym, qty=qty, avg_price=avg_price, cost_basis=cost))
     return sorted(out, key=lambda p: p.symbol)
 

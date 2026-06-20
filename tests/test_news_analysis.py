@@ -78,7 +78,7 @@ def test_train_all_populates_news_analysis_when_sentiment_present(mock_ccxt_exch
     from unittest.mock import patch
     from engine.trainer import train_all
 
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=True, with_micro=True, allow_sample=True)
 
     assert "sentiment_avg" in bundle["df"].columns
@@ -90,7 +90,7 @@ def test_train_all_no_news_analysis_key_without_news(mock_ccxt_exchange):
     from unittest.mock import patch
     from engine.trainer import train_all
 
-    with patch("ccxt.binance", return_value=mock_ccxt_exchange):
+    with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False, with_micro=True)
 
     assert bundle.get("news_analysis") is None

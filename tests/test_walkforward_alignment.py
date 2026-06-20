@@ -86,7 +86,7 @@ def test_lstm_predict_shorter_than_seqlen_returns_empty():
     import pandas as pd
 
     rng = np.random.RandomState(11)
-    n = 100
+    n = 300
     idx = pd.date_range("2020-01-01", periods=n, freq="D")
     p = 30000 + np.cumsum(rng.randn(n) * 200)
     p = np.abs(p) + 1000
@@ -99,8 +99,9 @@ def test_lstm_predict_shorter_than_seqlen_returns_empty():
     m = LSTMModel(epochs=2)
     res = m.train(sp["X_tr"], sp["y_tr"], sp["X_val"], sp["y_val"])
     assert "val" in res
-    preds = m.predict(sp["X_test"])
+    preds = m.predict(sp["X_test"][:10])
     assert isinstance(preds, np.ndarray)
+    assert len(preds) == 0
 
 
 def test_walkforward_raw_df_raises_clear_error():
