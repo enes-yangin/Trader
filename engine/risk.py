@@ -57,6 +57,52 @@ def stop_loss_hit(entry_px: float, current_px: float,
 
 
 # ------------------------------------------------------------------
+# Plan item F: cost-aware signal gating
+# ------------------------------------------------------------------
+
+def expected_move_covers_costs(expected_move_pct: float,
+                               commission_pct: Optional[float] = None,
+                               slippage_pct: Optional[float] = None,
+                               floor: Optional[float] = None,
+                               min_profit_target: Optional[float] = None) -> bool:
+    """True if the expected |move| clears round-trip costs plus the dynamic
+    threshold floor, AND clears the user-configured minimum profit target
+    (SIGNAL.min_profit_target, default 20%) -- i.e. only signals expected to
+    return at least that much are allowed through. Whichever bar is higher
+    wins; on typical BTC daily volatility (ATR% ~1-4%) the 20% target is the
+    binding constraint, not the cost floor, so this will pass through very
+    few signals -- that's the point, not a bug."""
+    from utils.config import BACKTEST, SIGNAL
+    commission_pct = BACKTEST.commission_pct if commission_pct is None else commission_pct
+    slippage_pct = BACKTEST.slippage_pct if slippage_pct is None else slippage_pct
+    floor = SIGNAL.dynamic_threshold_floor if floor is None else floor
+    min_profit_target = SIGNAL.min_profit_target if min_profit_target is None else min_profit_target
+    cost_floor = 2.0 * (commission_pct + slippage_pct) + floor
+    return abs(expected_move_pct) > max(cost_floor, min_profit_target)
+
+
+# ------------------------------------------------------------------
+# Plan item G: volatility-regime no-trade filter
+# ------------------------------------------------------------------
+
+def vol_regime_threshold(atr_history: np.ndarray, pctile: float = RISK.vol_filter_pctile) -> float:
+    """Freeze a no-trade ATR% threshold from TRAINING data only (no look-ahead):
+    the value above which recent ATR% sits in the top (1-pctile) of the
+    training-period distribution. Returns +inf (never blocks) if there is no
+    history to estimate from."""
+    if atr_history is None or len(atr_history) == 0:
+        return float("inf")
+    return float(np.percentile(atr_history, pctile * 100.0))
+
+
+def vol_regime_blocked(atr_pct: float, atr_threshold: float) -> bool:
+    """True if current ATR% exceeds the frozen (train-set) percentile
+    threshold from vol_regime_threshold() -- i.e. we're in an unusually
+    volatile regime and new entries should be suppressed."""
+    return atr_pct > atr_threshold
+
+
+# ------------------------------------------------------------------
 # Kaldıraç / Likidasyon Riski (Feature 4)
 # ------------------------------------------------------------------
 
@@ -227,3 +273,18 @@ def liquidation_buffer_price(
         return liq * (1 + buffer_pct)
     else:
         return liq * (1 - buffer_pct)
+
+
+def check_kill_switch(equity_curve: List[float], max_drawdown_limit: float = 0.15) -> bool:
+    """Returns True if the kill switch should be triggered because of excessive drawdown.
+
+    Triggered when peak equity to current equity drawdown exceeds the max_drawdown_limit (e.g., 0.15 = 15%).
+    """
+    if len(equity_curve) < 2:
+        return False
+    eq_arr = np.asarray(equity_curve)
+    peak = np.maximum.accumulate(eq_arr)
+    drawdowns = (eq_arr - peak) / peak
+    if np.any(drawdowns <= -max_drawdown_limit):
+        return True
+    return False

@@ -1,10 +1,11 @@
 import numpy as np
 import ccxt
 from utils.config import DATA, ORDERBOOK
+from utils.exchange_pool import get_exchange
 
 
 def fetch_orderbook(sym, depth=ORDERBOOK.depth):
-    ex = getattr(ccxt, DATA.exchange_id)({"enableRateLimit": True})
+    ex = get_exchange(DATA.exchange_id, enable_rate_limit=True)
     ob = ex.fetch_order_book(sym, limit=depth)
     return ob
 

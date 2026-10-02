@@ -2,10 +2,15 @@ import time
 import pandas as pd
 import ccxt
 from utils.config import DATA, FEATURES
+from utils.exchange_pool import get_exchange
 
 
+from utils.retry import with_retry
+
+
+@with_retry(exceptions=(ccxt.BaseError, ConnectionError, TimeoutError, OSError), retries=3, initial_delay=1.0)
 def fetch_crypto(sym, tf=DATA.timeframe, lim=DATA.ohlcv_limit):
-    ex = getattr(ccxt, DATA.exchange_id)({"enableRateLimit": True})
+    ex = get_exchange(DATA.exchange_id, enable_rate_limit=True)
     raw = ex.fetch_ohlcv(sym, timeframe=tf, limit=lim)
     df = pd.DataFrame(raw, columns=[FEATURES.date_col, "open", "high", "low", "close", "volume"])
     df[FEATURES.date_col] = pd.to_datetime(df[FEATURES.date_col], unit="ms")
@@ -17,13 +22,18 @@ def fetch_crypto(sym, tf=DATA.timeframe, lim=DATA.ohlcv_limit):
 
 
 def fetch_crypto_hist(sym, tf=DATA.timeframe, years=DATA.hist_years):
-    ex = getattr(ccxt, DATA.exchange_id)({"enableRateLimit": True})
+    ex = get_exchange(DATA.exchange_id, enable_rate_limit=True)
     ms_now = ex.milliseconds()
     since = ms_now - years * 365 * 24 * 60 * 60 * 1000
     all_rows = []
     cursor = since
+
+    @with_retry(exceptions=(ccxt.BaseError, ConnectionError, TimeoutError, OSError), retries=3, initial_delay=1.0)
+    def fetch_batch():
+        return ex.fetch_ohlcv(sym, timeframe=tf, since=cursor, limit=1000)
+
     while True:
-        batch = ex.fetch_ohlcv(sym, timeframe=tf, since=cursor, limit=1000)
+        batch = fetch_batch()
         if not batch:
             break
         all_rows += batch

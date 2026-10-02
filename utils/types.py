@@ -23,6 +23,13 @@ class FeatureSpec:
     orderbook: bool = False
     macro_events: bool = False
     social: bool = False
+    # Plan item D: when True, feature_columns() short-circuits to a small,
+    # deliberately curated set (FEATURES.core_feature_cols) instead of the
+    # full ~22-column union of every enabled family below. `micro`/`smooth`/
+    # `reference` still control which *engineer()* steps run (core needs
+    # vol_delta from micro and savgol_slope from smooth to exist at all) --
+    # `core` only narrows which *columns* feed the model.
+    core: bool = False
 
     @classmethod
     def from_bools(cls, with_news: bool = False, with_micro: bool = False,
@@ -31,11 +38,12 @@ class FeatureSpec:
                     with_reference: bool = False,
                     with_orderbook: bool = False,
                     with_macro_events: bool = False,
-                    with_social: bool = False) -> "FeatureSpec":
+                    with_social: bool = False,
+                    with_core: bool = False) -> "FeatureSpec":
         return cls(news=with_news, micro=with_micro, cross_asset=with_cross_asset,
                    smooth=with_smoothing, reference=with_reference,
                    orderbook=with_orderbook, macro_events=with_macro_events,
-                   social=with_social)
+                   social=with_social, core=with_core)
 
     @classmethod
     def default(cls) -> "FeatureSpec":
@@ -49,6 +57,11 @@ class FeatureSpec:
 
     def feature_columns(self) -> List[str]:
         from utils.config import FEATURES
+        if self.core:
+            cols = list(FEATURES.core_feature_cols)
+            if self.reference:
+                cols.append("funding_rate")
+            return cols
         cols = list(FEATURES.feature_cols)
         if self.micro:
             cols += list(FEATURES.micro_feature_cols)
@@ -183,6 +196,14 @@ class Bundle(_DictLike):
     spec: Optional[FeatureSpec] = None
     news_analysis: Optional[str] = None
     meta_model: Optional[Any] = None
+    best_model_name: Optional[str] = None
+    strategy_type: Optional[str] = None
+    pbo: Optional[float] = None
+    deflated_p: Optional[float] = None
+    cpcv_mean_sharpe: Optional[float] = None
+    cpcv_mean_dir_acc: Optional[float] = None
+    shield_passed: Optional[bool] = None
+    statarb_params: Optional[Dict] = None
 
 
 # Backward-compatible alias: news_analysis is now an optional field on Bundle

@@ -68,9 +68,6 @@ def add_news_features(price_df, sym, src="crypto", days=NEWS.news_days, sample=F
         news = generate_sample_news(base, n=span)
     else:
         news = fetch_news(sym, src=src, days=days)
-        if len(news) == 0:
-            base = sym.split("/")[0]
-            news = generate_sample_news(base, n=span)
     news = score_news_df(news)
     ds = daily_sentiment(news)
     merged = merge_to_price(price_df, ds)

@@ -20,7 +20,9 @@ def dynamic_threshold(atr_pct: float, buy_th: float = SIGNAL.buy_threshold,
     """
     if not SIGNAL.use_dynamic_threshold or atr_pct <= 0 or np.isnan(atr_pct):
         return buy_th, sell_th
-    th = SIGNAL.atr_mult * atr_pct
+    raw_th = SIGNAL.atr_mult * atr_pct
+    floor = getattr(SIGNAL, "dynamic_threshold_floor", 0.0)
+    th = max(floor, raw_th)
     return th, -th
 
 

@@ -80,7 +80,14 @@ def test_portfolio_backtest_selects_best_candidate():
     assert buy_trade["symbol"] == "ETH/USDT"
 
 
-def test_portfolio_backtest_rotates_assets():
+def test_portfolio_holds_to_barrier_no_rotation():
+    """Exit is triple-barrier only: an open position is held to its take-profit,
+    stop, or time barrier -- it is NOT rotated out mid-trade when another symbol
+    looks better, and it does NOT exit on a signal flip. Both of those exits
+    churned the account into losses (the diagnosed failure mode), so they were
+    removed. Here BTC is entered first and its price rises through the +1.5*ATR
+    take-profit barrier; ETH becoming far more attractive mid-trade must not
+    pull capital out early."""
     class _DynamicMockModel:
         def __init__(self, preds_list):
             self.preds_list = preds_list
@@ -90,13 +97,21 @@ def test_portfolio_backtest_rotates_assets():
 
     n = 40
     idx = pd.date_range("2024-01-01", periods=n, freq="D")
-    df_btc = pd.DataFrame({"close": np.full(n, 100.0), "atr_pct": np.full(n, 0.01)}, index=idx)
+    # BTC price ramps up through the test region so the fixed +15% take-profit
+    # barrier (SignalConfig.take_profit_pct) is touched; ETH stays flat.
+    btc_close = np.concatenate([np.full(30, 100.0),
+                                np.array([100.0, 103.0, 106.0, 109.0, 112.0,
+                                          115.0, 118.0, 121.0, 124.0, 127.0])])
+    df_btc = pd.DataFrame({"close": btc_close, "atr_pct": np.full(n, 0.01)}, index=idx)
     df_btc.attrs["symbol"] = "BTC/USDT"
     df_eth = pd.DataFrame({"close": np.full(n, 100.0), "atr_pct": np.full(n, 0.01)}, index=idx)
     df_eth.attrs["symbol"] = "ETH/USDT"
 
-    btc_preds = [0.05] * 2 + [0.01] * 8
-    eth_preds = [0.01] * 2 + [0.06] * 8
+    # BTC leads at entry, then ETH becomes far more attractive (the old code
+    # would have rotated); BTC pred also drops (the old code would have
+    # signal-flip SELL'd).
+    btc_preds = [0.05] + [-0.05] * 9
+    eth_preds = [0.01] + [0.20] * 9
 
     sp_btc = SplitDict(
         X_tr=np.zeros((20, 5)), y_tr=np.zeros(20), X_val=np.zeros((10, 5)), y_val=np.zeros(10),
@@ -126,7 +141,12 @@ def test_portfolio_backtest_rotates_assets():
     res = run_portfolio(bundles, "linear", capital=1000.0)
     trades = res["trades"]
 
-    rotate_exits = trades[trades["action"] == "ROTATE_EXIT"]
-    assert len(rotate_exits) > 0
-    rotate_exit = rotate_exits.iloc[0]
-    assert rotate_exit["symbol"] == "BTC/USDT"
+    # No churn exits of either kind.
+    assert (trades["action"] == "ROTATE_EXIT").sum() == 0
+    assert (trades["action"] == "SELL").sum() == 0
+    # The position was entered on BTC and closed at its take-profit barrier.
+    first_buy = trades[trades["action"] == "BUY"].iloc[0]
+    assert first_buy["symbol"] == "BTC/USDT"
+    tp_exits = trades[trades["action"] == "TAKE_PROFIT"]
+    assert len(tp_exits) > 0
+    assert tp_exits.iloc[0]["symbol"] == "BTC/USDT"

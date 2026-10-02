@@ -12,7 +12,7 @@ log = get_logger("dataset")
 def build(sym: str, src: str = "crypto", years: int = DATA.hist_years, with_news: bool = FEATURES.use_news,
           force: bool = False, allow_sample: bool = False) -> pd.DataFrame:
     if not force and cache_policy.is_dataset_fresh(sym, with_news):
-        df = cache_policy.load_cached_dataset(sym, with_news)
+        df = load_cached(sym, with_news)
         if df is not None:
             log.info(f"{sym}: loaded from cache ({len(df)} rows, with_news={with_news})")
             return df
@@ -26,6 +26,10 @@ def build(sym: str, src: str = "crypto", years: int = DATA.hist_years, with_news
     else:
         df = price
 
+    # Convert all float64 columns to float32 to save memory
+    for col in df.select_dtypes(include=["float64"]).columns:
+        df[col] = df[col].astype("float32")
+
     df.attrs["symbol"] = sym
     df.attrs["cached"] = False
     df.attrs["sample"] = sample
@@ -35,7 +39,11 @@ def build(sym: str, src: str = "crypto", years: int = DATA.hist_years, with_news
 
 
 def load_cached(sym: str, with_news: bool = FEATURES.use_news) -> Optional[pd.DataFrame]:
-    return cache_policy.load_cached_dataset(sym, with_news)
+    df = cache_policy.load_cached_dataset(sym, with_news)
+    if df is not None:
+        for col in df.select_dtypes(include=["float64"]).columns:
+            df[col] = df[col].astype("float32")
+    return df
 
 
 def has_cache(sym: str, with_news: bool = FEATURES.use_news) -> bool:
@@ -46,7 +54,7 @@ def ensure(sym: str, src: str = "crypto", years: int = DATA.hist_years, with_new
            allow_sample: bool = False,
            on_first: Optional[Callable[[str, int], None]] = None) -> pd.DataFrame:
     if cache_policy.has_cached_dataset(sym, with_news):
-        df = cache_policy.load_cached_dataset(sym, with_news)
+        df = load_cached(sym, with_news)
         if df is not None:
             if not cache_policy.is_dataset_fresh(sym, with_news):
                 log.warning(f"{sym}: returning stale cached dataset (with_news={with_news})")

@@ -135,12 +135,11 @@ def test_compute_weights_better_model_gets_more_weight(mock_ccxt_exchange):
         r["metrics"].setdefault("val", {})
 
     bundle["results"]["linear"]["metrics"]["val"] = {"r2": 0.5, "rmse": 0.01, "mse": 0.0001, "mae": 0.005}
-    bundle["results"]["xgboost"]["metrics"]["val"] = {"r2": 0.1, "rmse": 0.02, "mse": 0.0004, "mae": 0.01}
-    bundle["results"]["lstm"]["metrics"]["val"] = {"r2": -0.2, "rmse": 0.03, "mse": 0.0009, "mae": 0.02}
+    bundle["results"]["xgboost"]["metrics"]["val"] = {"r2": -0.2, "rmse": 0.03, "mse": 0.0009, "mae": 0.02}
 
     weights = compute_weights(bundle, metric="val_r2")
     assert weights["linear"] > weights["xgboost"]
-    assert weights["lstm"] == 0.0
+    assert weights["xgboost"] == 0.0
 
 
 def test_compute_weights_all_negative_falls_back_equal(mock_ccxt_exchange):

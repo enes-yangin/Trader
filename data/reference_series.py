@@ -194,8 +194,8 @@ def _fetch_ccxt_oi(sym: str, index: pd.Index) -> Optional[pd.Series]:
 
 def _fetch_ccxt_history(sym: str, index: pd.Index, kind: str) -> Optional[pd.Series]:
     try:
-        import ccxt
-        ex = getattr(ccxt, DATA.exchange_id)()
+        from utils.exchange_pool import get_exchange
+        ex = get_exchange(DATA.exchange_id, enable_rate_limit=True)
         if kind == "funding":
             if not getattr(ex, "has", {}).get("fetchFundingRateHistory"):
                 return None

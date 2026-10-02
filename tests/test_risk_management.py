@@ -100,3 +100,14 @@ def test_backtest_final_equity_always_nonnegative(synthetic_ohlcv):
     mdl = _AlwaysBuyModel()
     res = run(mdl, sp)
     assert res["metrics"]["final_equity"] >= 0
+
+
+def test_check_kill_switch():
+    from engine.risk import check_kill_switch
+    # Drawdown limit is 15% (0.15)
+    # No drawdown
+    assert check_kill_switch([100.0, 101.0, 102.0], max_drawdown_limit=0.15) is False
+    # 10% drawdown (not enough to trigger)
+    assert check_kill_switch([100.0, 90.0, 95.0], max_drawdown_limit=0.15) is False
+    # 20% drawdown (triggers)
+    assert check_kill_switch([100.0, 80.0, 90.0], max_drawdown_limit=0.15) is True

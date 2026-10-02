@@ -198,3 +198,73 @@ def test_select_and_judge_holdout_sealed_until_end():
                            wf_train=100, wf_test=40)
     assert rep.holdout_trades >= 0
     assert rep.trial_log.n_trials == 2
+
+
+def test_run_statarb_backtest():
+    import pandas as pd
+    from engine.backtester import run_statarb
+    
+    # Create simple dataframes for Y and X
+    idx = pd.date_range("2024-01-01", periods=100, freq="D")
+    df_y = pd.DataFrame({"close": np.linspace(10, 20, 100)}, index=idx)
+    df_x = pd.DataFrame({"close": np.linspace(1, 2, 100)}, index=idx)
+    
+    # Mock Split Dict
+    sp_y = {"df": df_y, "X_tr": np.zeros((60, 2)), "y_tr": np.zeros(60), "idx_tr": idx[:60], "i_tr": 0,
+            "X_val": np.zeros((20, 2)), "y_val": np.zeros(20), "idx_val": idx[60:80], "i_va": 60,
+            "X_test": np.zeros((20, 2)), "y_test": np.zeros(20), "idx_test": idx[80:], "i_te": 80}
+    sp_x = {"df": df_x, "X_tr": np.zeros((60, 2)), "y_tr": np.zeros(60), "idx_tr": idx[:60], "i_tr": 0,
+            "X_val": np.zeros((20, 2)), "y_val": np.zeros(20), "idx_val": idx[60:80], "i_va": 60,
+            "X_test": np.zeros((20, 2)), "y_test": np.zeros(20), "idx_test": idx[80:], "i_te": 80}
+            
+    res = run_statarb(sp_y, sp_x, beta=1.0, alpha=9.0, train_mean=0.0, train_std=1.0, entry=2.0, exit=0.5)
+    assert "metrics" in res
+    assert "trades" in res
+    assert "equity" in res
+
+
+def test_statarb_services_integration():
+    from messaging.bus import MessageBus
+    from services.app_state import AppState
+    from services.training_service import TrainingService
+    from services.backtest_service import BacktestService
+    
+    bus = MessageBus()
+    state = AppState()
+    
+    train_svc = TrainingService(bus, state)
+    backtest_svc = BacktestService(bus, state)
+    
+    # Run the training pipeline synchronously
+    future_train = train_svc.train_pipeline(
+        active_sym="ETH/USDT",
+        syms=("ETH/USDT",),
+        allow_sample=True,
+        strategy="Stat-Arb (vs BTC)"
+    )
+    res_train = future_train.result()
+    assert "bundles" in res_train
+    assert "ETH/USDT" in res_train["bundles"]
+    
+    bundle = state.get_bundle("ETH/USDT")
+    assert bundle is not None
+    assert bundle["strategy_type"] == "statarb"
+    assert "statarb_params" in bundle
+    
+    # Force the shield to pass if it failed due to randomized mock data, to test backtest
+    bundle["shield_passed"] = True
+    state.set_bundle("ETH/USDT", bundle)
+    
+    # Run the backtest pipeline synchronously
+    future_bt = backtest_svc.run_backtest("ETH/USDT", capital=1000.0, period_days=365)
+    future_bt.result()
+    
+    bt_results = state.get_bt_cache("ETH/USDT")
+    assert bt_results is not None
+    assert "statarb" in bt_results
+    assert bt_results["statarb"]["metrics"]["total_return"] is not None
+    
+    train_svc.shutdown()
+    backtest_svc.shutdown()
+    bus.close()
+

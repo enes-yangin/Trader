@@ -14,6 +14,15 @@ CLASSIFIER_MAP = {
     "xgb_clf": XGBClassifierModel,
 }
 
+# Classifiers actually trained in production. Both stay registered above (usable
+# by ev_optimization, walk-forward, tests), but only these drive live signals /
+# backtests. Measured on real BTC+alt data: with the min_proba confidence gate,
+# xgb_clf's well-calibrated probabilities let it abstain when unsure (portfolio
+# ~breakeven), whereas LogisticRegression's flatter probabilities cleared the
+# gate too often, over-traded (121 trades) and lost ~-12%. This is a calibration
+# argument, not a fit to one test window -- see backtest-exit-alignment memory.
+PRODUCTION_CLASSIFIERS = ("xgb_clf",)
+
 
 def build_classifier(name: str, **kw: Any) -> BaseClassifier:
     cls = CLASSIFIER_MAP.get(name.lower())
@@ -27,9 +36,17 @@ from engine.purging import purged_train_end
 
 def split_classification(df: pd.DataFrame, spec: FeatureSpec,
                           threshold: float = 0.5, atr_normalize: bool = True,
+                          labeling: str = "fixed",
+                          pt_mult: float = MODEL.pt_mult, sl_mult: float = MODEL.sl_mult,
                           tr: float = SPLIT.train_ratio,
                           va: float = SPLIT.val_ratio) -> Dict[str, Any]:
-    df = add_labels(df, threshold=threshold, atr_normalize=atr_normalize)
+    if labeling == "triple_barrier":
+        from data.labeling import triple_barrier_labels
+        df = df.copy()
+        df[CLASS_TARGET_COL] = triple_barrier_labels(
+            df, h=MODEL.pred_horizon, pt_mult=pt_mult, sl_mult=sl_mult)
+    else:
+        df = add_labels(df, threshold=threshold, atr_normalize=atr_normalize)
     df = df.dropna(subset=[CLASS_TARGET_COL])
     X = get_features(df, spec=spec).values
     y = df[CLASS_TARGET_COL].values.astype(int)
@@ -49,7 +66,15 @@ def split_classification(df: pd.DataFrame, spec: FeatureSpec,
         "X_val": X[purged_i_tr:purged_i_va], "y_val": y[purged_i_tr:purged_i_va],
         "X_test": X[purged_i_va:], "y_test": y[purged_i_va:],
         "fwd_test": fwd_arr[purged_i_va:],
+        # Plan item I: filled in so engine.backtester's _select_set/run() can
+        # score a classifier bundle exactly like a regression SplitDict --
+        # idx_tr/idx_val/i_tr/i_va/df/split_idx mirror engine.trainer.split()'s
+        # SplitDict shape (i_tr/i_va are the PURGED boundaries, since those are
+        # the true start row of X_val/X_test after purging).
+        "idx_tr": idx[:purged_i_tr], "idx_val": idx[purged_i_tr:purged_i_va],
         "idx_test": idx[purged_i_va:],
+        "i_tr": purged_i_tr, "i_va": purged_i_va, "split_idx": purged_i_tr,
+        "df": df,
         "spec": spec,
     }
 

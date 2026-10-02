@@ -106,7 +106,8 @@ def evaluate_past_predictions():
     if not by_symbol:
         return _compute_stats(trades)
         
-    ex = getattr(ccxt, DATA.exchange_id)({"enableRateLimit": True})
+    from utils.exchange_pool import get_exchange
+    ex = get_exchange(DATA.exchange_id, enable_rate_limit=True)
     
     for symbol, sym_trades in by_symbol.items():
         try:

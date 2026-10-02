@@ -18,6 +18,7 @@ logs/
 .pytest_cache/
 *.deps_installed
 
+# Generated AI Reports
 plan.md
 review.md
 walkthrough.md
@@ -25,4 +26,14 @@ bugs.md
 *_report.md
 new_perspectives_critique.md
 architecture_analysis_and_ideas.md
-.claude
+
+# Local caches / tooling
+cachedir/
+.claude/
+
+# Stale generated reports
+bug.md
+ERROR_REPORT.md
+
+# Personal notes (not for the public repo)
+docs/CV_ENTRY.md

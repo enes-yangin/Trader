@@ -150,7 +150,7 @@ def add_event_features(
             from data.econ_calendar import fetch_econ_calendar
             start = str(df.index.min().strftime("%Y-%m-%d"))
             end = str(df.index.max().strftime("%Y-%m-%d"))
-            calendar = fetch_econ_calendar(start=start, end=end)
+            calendar = fetch_econ_calendar(start=start, end=end, use_cache=True, allow_sample=allow_sample)
         else:
             df["bars_to_next_event"] = -1.0
             df["last_event_surprise"] = 0.0

@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 
@@ -55,7 +57,47 @@ STATIC_EVENTS: List[Dict[str, Any]] = [
 EVENT_WEIGHTS = {1: 0.5, 2: 1.0, 3: 2.0}
 
 
-def _build_static_calendar(start: str, end: str) -> pd.DataFrame:
+FRED_MAP = {
+    "CPI": {
+        "series_id": "CPIAUCSL",
+        "importance": 3,
+        "description": "Tüketici Fiyat Endeksi"
+    },
+    "NFP": {
+        "series_id": "PAYEMS",
+        "importance": 3,
+        "description": "Tarım Dışı İstihdam"
+    },
+    "GDP": {
+        "series_id": "GDPC1",
+        "importance": 3,
+        "description": "Gayri Safi Yurtiçi Hasıla"
+    },
+    "PPI": {
+        "series_id": "PPIACO",
+        "importance": 2,
+        "description": "Üretici Fiyat Endeksi"
+    },
+    "Unemployment_Claims": {
+        "series_id": "ICSA",
+        "importance": 2,
+        "description": "İşsizlik Başvuruları"
+    }
+}
+
+
+def _get_static_values(date_str: str, event_name: str) -> tuple[float, float]:
+    """Generate deterministic mock actual and forecast values using hashed date-name seed."""
+    import hashlib
+    seed_str = f"{date_str}_{event_name}"
+    seed = int(hashlib.md5(seed_str.encode('utf-8')).hexdigest()[:8], 16)
+    rng = np.random.default_rng(seed)
+    forecast = round(float(rng.uniform(1.0, 5.0)), 2)
+    actual = round(forecast + float(rng.normal(0, 0.5)), 2)
+    return forecast, actual
+
+
+def _build_static_calendar(start: str, end: str, allow_sample: bool = False) -> pd.DataFrame:
     """Statik takvimden belirli tarih aralığı için olay takvimi üret."""
     start_dt = pd.Timestamp(start)
     end_dt = pd.Timestamp(end)
@@ -82,12 +124,15 @@ def _build_static_calendar(start: str, end: str) -> pd.DataFrame:
                     event_day = current.replace(day=14)
 
                 if event_day <= end_dt and start_dt <= event_day:
+                    forecast, actual = None, None
+                    if allow_sample:
+                        forecast, actual = _get_static_values(event_day.strftime("%Y-%m-%d"), ev["name"])
                     rows.append({
                         "date": event_day.strftime("%Y-%m-%d"),
                         "name": ev["name"], "country": ev["country"],
                         "importance": ev["importance"],
                         "description": ev["description"],
-                        "forecast": None, "actual": None,
+                        "forecast": forecast, "actual": actual,
                     })
 
             # Haftalık olaylar
@@ -96,12 +141,15 @@ def _build_static_calendar(start: str, end: str) -> pd.DataFrame:
                 days_ahead = (dow - current.dayofweek) % 7
                 event_day = current + timedelta(days=days_ahead)
                 if event_day <= end_dt and start_dt <= event_day:
+                    forecast, actual = None, None
+                    if allow_sample:
+                        forecast, actual = _get_static_values(event_day.strftime("%Y-%m-%d"), ev["name"])
                     rows.append({
                         "date": event_day.strftime("%Y-%m-%d"),
                         "name": ev["name"], "country": ev["country"],
                         "importance": ev["importance"],
                         "description": ev["description"],
-                        "forecast": None, "actual": None,
+                        "forecast": forecast, "actual": actual,
                     })
 
             # 6 haftalık FOMC döngüsü — yaklaşık
@@ -112,12 +160,15 @@ def _build_static_calendar(start: str, end: str) -> pd.DataFrame:
                 if week_num % 6 == 0 and current.dayofweek == 2:  # Salı
                     event_day = current + timedelta(days=offset)
                     if event_day <= end_dt and start_dt <= event_day:
+                        forecast, actual = None, None
+                        if allow_sample:
+                            forecast, actual = _get_static_values(event_day.strftime("%Y-%m-%d"), ev["name"])
                         rows.append({
                             "date": event_day.strftime("%Y-%m-%d"),
                             "name": ev["name"], "country": ev["country"],
                             "importance": ev["importance"],
                             "description": ev["description"],
-                            "forecast": None, "actual": None,
+                            "forecast": forecast, "actual": actual,
                         })
 
             # Çeyreklik
@@ -125,12 +176,15 @@ def _build_static_calendar(start: str, end: str) -> pd.DataFrame:
                 if current.month in (1, 4, 7, 10) and current.day == 28:
                     event_day = current
                     if event_day <= end_dt and start_dt <= event_day:
+                        forecast, actual = None, None
+                        if allow_sample:
+                            forecast, actual = _get_static_values(event_day.strftime("%Y-%m-%d"), ev["name"])
                         rows.append({
                             "date": event_day.strftime("%Y-%m-%d"),
                             "name": ev["name"], "country": ev["country"],
                             "importance": ev["importance"],
                             "description": ev["description"],
-                            "forecast": None, "actual": None,
+                            "forecast": forecast, "actual": actual,
                         })
 
         current += timedelta(days=1)
@@ -151,6 +205,7 @@ def fetch_econ_calendar(
     start: Optional[str] = None,
     end: Optional[str] = None,
     use_cache: bool = True,
+    allow_sample: bool = False,
 ) -> pd.DataFrame:
     """Ekonomik takvimi getir (canlı API → statik fallback).
 
@@ -162,6 +217,8 @@ def fetch_econ_calendar(
         Bitiş tarihi (YYYY-MM-DD). Yoksa 3 ay sonrası.
     use_cache : bool
         Disk cache kullanılsın mı?
+    allow_sample : bool
+        Sentetik / statik olaylar üretilsin mi?
 
     Returns
     -------
@@ -187,15 +244,15 @@ def fetch_econ_calendar(
         except (ValueError, KeyError, OSError) as e:
             log.warning(f"Cache okunamadı: {e}")
 
-    # Canlı API dene (ör: free tier economic calendar)
+    # Canlı API dene
     df = None
     try:
-        df = _fetch_from_api(start, end)
+        df = _fetch_from_api(start, end, allow_sample=allow_sample)
     except Exception as e:
         log.info(f"API ekonomik takvim alınamadı ({e}), statik fallback")
 
     if df is None or df.empty:
-        df = _build_static_calendar(start, end)
+        df = _build_static_calendar(start, end, allow_sample=allow_sample)
 
     if df.empty:
         return df
@@ -210,12 +267,51 @@ def fetch_econ_calendar(
     return df
 
 
-def _fetch_from_api(start: str, end: str) -> Optional[pd.DataFrame]:
-    """Ücretsiz ekonomik takvim API'sinden veri çekmeyi dene.
-
-    Birden fazla kaynağı sırayla dener: Trading Economics, FXStreet RSS.
-    Gerçek API key yoksa None döner — sessizce statik takvime geçilir.
+def _fetch_from_api(start: str, end: str, allow_sample: bool = False) -> Optional[pd.DataFrame]:
+    """Query FRED macro series using _fetch_fred and define forecast as a rolling average.
+    
+    Falls back to None if FRED key is missing or request fails.
     """
-    # TODO: Ücretsiz API endpoint eklendiğinde buraya gerçek HTTP isteği gelecek.
-    # Şimdilik statik takvime sessizce geçiyoruz.
-    return None
+    from data.reference_series import _fetch_fred
+    
+    rows = []
+    start_dt = pd.Timestamp(start)
+    end_dt = pd.Timestamp(end)
+    
+    # Loop over our FRED mapping
+    for name, info in FRED_MAP.items():
+        try:
+            # fetch the series
+            series = _fetch_fred(info["series_id"], pd.Index([]))
+            if series is None or series.empty:
+                continue
+                
+            # Define forecast as rolling average of past 12 observations
+            series = series.sort_index()
+            forecast_series = series.shift(1).rolling(window=12, min_periods=1).mean()
+            
+            for date, actual in series.items():
+                if date < start_dt or date > end_dt:
+                    continue
+                fc = forecast_series.loc[date]
+                if pd.isna(fc) or pd.isna(actual):
+                    continue
+                rows.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "name": name,
+                    "country": "US",
+                    "importance": info["importance"],
+                    "description": info["description"],
+                    "forecast": float(fc),
+                    "actual": float(actual),
+                })
+        except Exception as e:
+            log.warning(f"Failed to fetch or process FRED series {info['series_id']}: {e}")
+            
+    if not rows:
+        return None
+        
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").reset_index(drop=True)
+    return df

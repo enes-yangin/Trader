@@ -1,10 +1,9 @@
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Dict, Type
 import pandas as pd
 from data.indicators import engineer, get_features
 from models.base_model import BaseModel
 from models.linear_model import LinearModel
 from models.xgb_model import XGBModel
-from models.lstm_model import LSTMModel
 from engine.purging import purged_train_end
 from utils.config import FEATURES, MODEL, SPLIT
 from utils.types import Bundle, BundleWithNews, SplitDict, TrainSingleResult, FeatureSpec
@@ -13,10 +12,12 @@ from utils.types import Bundle, BundleWithNews, SplitDict, TrainSingleResult, Fe
 from engine.feature_selection import select_top_k
 from engine.optimizer import build_optimized_model
 
-MODEL_MAP = {
+# LSTM removed from the default training set (plan item A): on ~1.2k rows it
+# ate ~90% of training time for zero/negative ensemble contribution. Still
+# available as an opt-in via models.lstm_model.LSTMModel / run_cpcv_model("lstm", ...).
+MODEL_MAP: Dict[str, Type[BaseModel]] = {
     "linear": LinearModel,
     "xgboost": XGBModel,
-    "lstm": LSTMModel,
 }
 
 

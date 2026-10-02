@@ -95,7 +95,10 @@ def simulate(spread_arr: npt.ArrayLike, positions: npt.ArrayLike,
     is a maximal run of equal non-zero positions; `cost` is charged once per
     round trip (entry+exit slippage/fees lumped together)."""
     sp = np.asarray(spread_arr, dtype=np.float64)
-    pos = np.asarray(positions, dtype=np.float64)
+    pos = np.asarray(positions, dtype=np.float64).copy()
+    if pos.size > 0:
+        pos[-1] = 0.0  # Force close at the last bar so no trade is opened on last bar and open trades close
+
     if sp.size != pos.size:
         raise ValueError(f"length mismatch: spread={sp.size}, pos={pos.size}")
     per_bar = np.zeros(pos.size, dtype=np.float64)

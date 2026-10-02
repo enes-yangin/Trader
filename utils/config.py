@@ -55,10 +55,17 @@ class DataConfig:
     cache_max_age_h: float = field(default_factory=lambda: _env_float("AI_TRADER_CACHE_MAX_AGE_H", 12.0))
     cache_fmt: str = "parquet"
 
-    crypto_symbols: Tuple[str, ...] = (
-        "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT",
-        "XRP/USDT", "ADA/USDT", "DOGE/USDT", "AVAX/USDT",
-    )
+    # Tradeable universe. Re-enabled to the full multi-asset default per user
+    # request; portfolio mode (engine.backtester.run_portfolio_all, forced on
+    # unconditionally by services/backtest_service.py) rotates capital across
+    # all of these. Override via .env, e.g. AI_TRADER_SYMBOLS="BTC/USDT,ETH/USDT".
+    crypto_symbols: Tuple[str, ...] = field(default_factory=lambda: tuple(
+        s.strip() for s in _env_str(
+            "AI_TRADER_SYMBOLS",
+            "BTC/USDT,ETH/USDT,BNB/USDT,SOL/USDT,XRP/USDT,ADA/USDT,DOGE/USDT,AVAX/USDT",
+        ).split(",")
+        if s.strip()
+    ))
 
     def __post_init__(self):
         if self.hist_years <= 0:
@@ -117,10 +124,19 @@ class FeatureConfig:
     social_feature_cols: Tuple[str, ...] = (
         "social_volume_z", "social_sentiment_avg", "social_polarity_shift",
     )
+    # Plan item D: a deliberately small, edge-scan-motivated core set (momentum
+    # + vol + causal-smoothed momentum + order-flow proxy) instead of all 22+
+    # engineered columns on ~1.2k rows of BTC data. funding_rate is added
+    # separately by FeatureSpec.feature_columns() only when reference=True,
+    # since it lives in reference_feature_cols and would otherwise be a
+    # dangling column name with no engineer() step to populate it.
+    core_feature_cols: Tuple[str, ...] = (
+        "ret_5d", "ret_10d", "atr_pct", "savgol_slope", "vol_delta",
+    )
 
     use_micro: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_MICRO", True))
     use_news: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_NEWS", False))
-    use_cross_asset: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_CROSS_ASSET", True))
+    use_cross_asset: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_CROSS_ASSET", False))
     use_smoothing: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_SMOOTHING", True))
     use_reference: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_REFERENCE", False))
     use_orderbook: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_ORDERBOOK", True))
@@ -292,6 +308,29 @@ class SignalConfig:
     confidence_max: float = 99.0
     use_dynamic_threshold: bool = True
     atr_mult: float = 0.1
+    dynamic_threshold_floor: float = field(default_factory=lambda: _env_float("AI_TRADER_DYNAMIC_THRESHOLD_FLOOR", 0.015))
+    # User request: only take trades whose expected move clears a minimum
+    # profit target (default 5%). Enforced in engine.risk.expected_move_covers_costs,
+    # the same F gate the classifier adapter already runs every signal through
+    # -- so this applies to both the live signal path and the backtest.
+    min_profit_target: float = field(default_factory=lambda: _env_float("AI_TRADER_MIN_PROFIT_TARGET", 0.05))
+    # Confidence gate for the classifier signal path: a directional (BUY/SELL)
+    # prediction whose winning-class probability is below this is too close to
+    # the 3-class chance line (~0.33) to carry real edge, so it is demoted to
+    # HOLD. Only high-conviction calls trade -- fewer trades, higher effective
+    # hit rate, which is what makes the 2.5:1 barrier asymmetry pay. 0.45 sits
+    # meaningfully above chance without silencing every signal; tune via env.
+    min_proba: float = field(default_factory=lambda: _env_float("AI_TRADER_MIN_PROBA", 0.45))
+    # User-specified FIXED-percentage exit barriers (override the ATR-scaled
+    # triple-barrier exit in engine.backtester). Rule: hold a position until it
+    # either takes profit or hits the stop -- never close a small loser, never
+    # close flat. take_profit_pct is the default target; if the entry signal's
+    # expected move is >= tp_high_trigger, let the winner run to take_profit_high_pct.
+    # stop_loss_pct is the ONLY loss-exit (no time barrier).
+    take_profit_pct: float = field(default_factory=lambda: _env_float("AI_TRADER_TP_PCT", 0.15))
+    take_profit_high_pct: float = field(default_factory=lambda: _env_float("AI_TRADER_TP_HIGH_PCT", 0.25))
+    tp_high_trigger: float = field(default_factory=lambda: _env_float("AI_TRADER_TP_HIGH_TRIGGER", 0.25))
+    stop_loss_pct: float = field(default_factory=lambda: _env_float("AI_TRADER_EXIT_SL_PCT", 0.05))
 
     def __post_init__(self):
         if self.buy_threshold <= 0:
@@ -304,6 +343,19 @@ class SignalConfig:
             raise ConfigError(f"confidence_max must be in (0,100], got {self.confidence_max}")
         if self.atr_mult <= 0:
             raise ConfigError(f"atr_mult must be positive, got {self.atr_mult}")
+        if self.min_profit_target <= 0:
+            raise ConfigError(f"min_profit_target must be positive, got {self.min_profit_target}")
+        if not (0 < self.min_proba <= 1):
+            raise ConfigError(f"min_proba must be in (0,1], got {self.min_proba}")
+        if self.take_profit_pct <= 0:
+            raise ConfigError(f"take_profit_pct must be positive, got {self.take_profit_pct}")
+        if self.take_profit_high_pct < self.take_profit_pct:
+            raise ConfigError("take_profit_high_pct must be >= take_profit_pct, got "
+                              f"{self.take_profit_high_pct} < {self.take_profit_pct}")
+        if not (0 < self.stop_loss_pct < 1):
+            raise ConfigError(f"stop_loss_pct must be in (0,1), got {self.stop_loss_pct}")
+        if self.tp_high_trigger <= 0:
+            raise ConfigError(f"tp_high_trigger must be positive, got {self.tp_high_trigger}")
 
 
 @dataclass(frozen=True)
@@ -341,6 +393,13 @@ class RiskConfig:
     liquidation_buffer: float = 0.002         # Likidasyon fiyatına güvenlik buffer'ı
     use_leverage: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_LEVERAGE", False))
 
+    # Plan item G: block new entries when current ATR% sits above the
+    # frozen (train-set-only) percentile threshold -- the most reliable
+    # source of edge is often *not trading* in an abnormally volatile regime,
+    # rather than any directional feature.
+    use_vol_filter: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_VOL_FILTER", True))
+    vol_filter_pctile: float = field(default_factory=lambda: _env_float("AI_TRADER_VOL_FILTER_PCTILE", 0.8))
+
     def __post_init__(self):
         if not (0 < self.stop_loss_pct < 1):
             raise ConfigError(f"stop_loss_pct must be in (0,1), got {self.stop_loss_pct}")
@@ -361,6 +420,8 @@ class RiskConfig:
             raise ConfigError(f"max_leverage must be >= 1, got {self.max_leverage}")
         if self.liquidation_buffer < 0:
             raise ConfigError(f"liquidation_buffer must be >= 0, got {self.liquidation_buffer}")
+        if not (0 < self.vol_filter_pctile < 1):
+            raise ConfigError(f"vol_filter_pctile must be in (0,1), got {self.vol_filter_pctile}")
 
 
 @dataclass(frozen=True)
@@ -420,8 +481,26 @@ class NewsConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    pred_horizon: int = 5
+    # User request: 20-day horizon (was 5). Purging, triple-barrier labeling,
+    # and walk-forward/CPCV all read this centrally, so this one change
+    # cascades everywhere. See ClassifierSignalAdapter for the corresponding
+    # sqrt(horizon) expected-move scaling this requires.
+    pred_horizon: int = 20
     seq_len: int = 30
+    # Triple-barrier reward:risk asymmetry, single source of truth for BOTH the
+    # BUY/SELL labels (data/labeling.py) and the backtest take-profit/stop exit
+    # (engine/backtester.py) -- they MUST match or the model is trained on a
+    # different bet than the backtester executes. pt_mult=2.5, sl_mult=1.0 is a
+    # 2.5:1 asymmetry (user-chosen): a correct call harvests +2.5*ATR while a
+    # wrong one is cut at -1.0*ATR, so even a <50% hit rate can be net positive.
+    pt_mult: float = 2.5
+    sl_mult: float = 1.0
+    # Plan item C: default OFF. The secondary RandomForest meta-labeler (N5)
+    # can be fit on as few as 5 validation rows and its single-class fallback
+    # (DummyMetaClassifier) always reports 100% confidence -- an unvalidated
+    # overfitting layer on top of an already-noisy primary signal. Opt-in via
+    # AI_TRADER_USE_META_LABELING=1 once it has real out-of-sample validation.
+    use_meta_labeling: bool = field(default_factory=lambda: _env_bool("AI_TRADER_USE_META_LABELING", False))
     xgb_params: Dict = field(default_factory=lambda: {
         "n_estimators": 200,
         "max_depth": 3,
@@ -448,6 +527,10 @@ class ModelConfig:
     def __post_init__(self):
         if self.pred_horizon <= 0:
             raise ConfigError(f"pred_horizon must be positive, got {self.pred_horizon}")
+        if self.pt_mult <= 0:
+            raise ConfigError(f"pt_mult must be positive, got {self.pt_mult}")
+        if self.sl_mult <= 0:
+            raise ConfigError(f"sl_mult must be positive, got {self.sl_mult}")
         if self.seq_len <= 0:
             raise ConfigError(f"seq_len must be positive, got {self.seq_len}")
         if self.seq_len >= self.pred_horizon * 100:
@@ -472,8 +555,12 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class OptimizationConfig:
-    linear_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_LINEAR_N_TRIALS", 20))
-    xgb_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_XGB_N_TRIALS", 20))
+    # Plan item B: 20->5. Optuna picks the best of n_trials val scores, which is
+    # an undeflated multiple-comparisons selection (N2/A1) -- on ~1.2k rows of
+    # BTC data, fewer trials means less room for that selection bias to inflate
+    # the apparent edge before deflated_p_value() corrects for it.
+    linear_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_LINEAR_N_TRIALS", 5))
+    xgb_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_XGB_N_TRIALS", 5))
     lstm_n_trials: int = field(default_factory=lambda: _env_int("AI_TRADER_LSTM_N_TRIALS", 5))
     lstm_opt_epochs: int = field(default_factory=lambda: _env_int("AI_TRADER_LSTM_OPT_EPOCHS", 10))
     optuna_seed: int = 42
@@ -496,6 +583,31 @@ class OptimizationConfig:
             )
 
 
+@dataclass(frozen=True)
+class ServiceConfig:
+    """v2 Phase 1: Thread worker pool sizes for each service."""
+    data_workers: int = field(default_factory=lambda: _env_int("AI_TRADER_DATA_WORKERS", 4))
+    training_workers: int = field(default_factory=lambda: _env_int("AI_TRADER_TRAINING_WORKERS", 1))
+    backtest_workers: int = field(default_factory=lambda: _env_int("AI_TRADER_BACKTEST_WORKERS", 1))
+
+    def __post_init__(self):
+        for name, val in [("data_workers", self.data_workers),
+                          ("training_workers", self.training_workers),
+                          ("backtest_workers", self.backtest_workers)]:
+            if val < 1:
+                raise ConfigError(f"{name} must be >= 1, got {val}")
+
+
+@dataclass(frozen=True)
+class MessageBusConfig:
+    """v2 Phase 1: ZeroMQ transport mode. 'inproc' for single-process, 'tcp' for multi-process."""
+    transport: str = field(default_factory=lambda: _env_str("AI_TRADER_MSG_TRANSPORT", "inproc"))
+
+    def __post_init__(self):
+        if self.transport not in ("inproc", "tcp", "ipc"):
+            raise ConfigError(f"transport must be 'inproc', 'tcp', or 'ipc', got {self.transport!r}")
+
+
 DATA = DataConfig()
 FEATURES = FeatureConfig()
 CROSS_ASSET = CrossAssetConfig()
@@ -509,11 +621,13 @@ ORDERBOOK = OrderbookConfig()
 NEWS = NewsConfig()
 MODEL = ModelConfig()
 OPTIMIZATION = OptimizationConfig()
+SERVICE = ServiceConfig()
+MSGBUS = MessageBusConfig()
 
 
 def validate_all():
     for cfg in (DATA, FEATURES, CROSS_ASSET, REFERENCE, INDICATORS, SPLIT, SIGNAL,
-                BACKTEST, RISK, ORDERBOOK, NEWS, MODEL, OPTIMIZATION):
+                BACKTEST, RISK, ORDERBOOK, NEWS, MODEL, OPTIMIZATION, SERVICE, MSGBUS):
         cfg.__post_init__()
     return True
 

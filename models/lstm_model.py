@@ -21,8 +21,8 @@ def make_sequences(X: np.ndarray, y: np.ndarray, seq_len: int = MODEL.seq_len) -
 
 
 def to_loader(X: np.ndarray, y: np.ndarray, batch_size: int, shuffle: bool = True) -> DataLoader:
-    tx = torch.FloatTensor(X).to(DEV)
-    ty = torch.FloatTensor(y).to(DEV)
+    tx = torch.FloatTensor(X)  # Keep on CPU
+    ty = torch.FloatTensor(y)  # Keep on CPU
     ds = TensorDataset(tx, ty)
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle)
 
@@ -116,6 +116,7 @@ class LSTMModel(BaseModel):
             ep_loss = 0.0
             n = 0
             for xb, yb in tr_loader:
+                xb, yb = xb.to(DEV), yb.to(DEV)  # Load onto GPU batch-by-batch
                 opt.zero_grad()
                 pred = net(xb)
                 loss = loss_fn(pred, yb)
@@ -157,6 +158,7 @@ class LSTMModel(BaseModel):
         total, n = 0.0, 0
         with torch.no_grad():
             for xb, yb in loader:
+                xb, yb = xb.to(DEV), yb.to(DEV)  # Load onto GPU batch-by-batch
                 pred = net(xb)
                 total += loss_fn(pred, yb).item() * len(xb)
                 n += len(xb)
@@ -170,10 +172,17 @@ class LSTMModel(BaseModel):
         Xs = self._prep(X)
         if len(Xs) == 0:
             return np.array([], dtype=float)
-        tx = torch.FloatTensor(Xs).to(DEV)
+        
+        # Predict in batches to prevent GPU OOM
+        bs = self.p.get("batch_size", 128)
+        preds_list = []
         with torch.no_grad():
-            preds = net(tx).cpu().numpy()
-        return preds.flatten()
+            for i in range(0, len(Xs), bs):
+                chunk = Xs[i:i+bs]
+                tx = torch.FloatTensor(chunk).to(DEV)
+                out = net(tx).cpu().numpy().flatten()
+                preds_list.append(out)
+        return np.concatenate(preds_list)
 
     def predict_last(self, X: np.ndarray) -> float:
         self._check_ready(X)
@@ -195,10 +204,19 @@ class LSTMModel(BaseModel):
             return {"mse": 0.0, "rmse": 0.0, "mae": 0.0, "r2": 0.0}
         assert self.net is not None
         net = self.net
-        tx = torch.FloatTensor(Xsq).to(DEV)
         net.eval()
+        
+        # Predict in batches to prevent GPU OOM
+        bs = self.p.get("batch_size", 128)
+        preds_list = []
         with torch.no_grad():
-            preds = net(tx).cpu().numpy().flatten()
+            for i in range(0, len(Xsq), bs):
+                chunk = Xsq[i:i+bs]
+                tx = torch.FloatTensor(chunk).to(DEV)
+                out = net(tx).cpu().numpy().flatten()
+                preds_list.append(out)
+        preds = np.concatenate(preds_list)
+        
         mse = float(np.mean((ysq - preds) ** 2))
         mae = float(np.mean(np.abs(ysq - preds)))
         ss_res = np.sum((ysq - preds) ** 2)

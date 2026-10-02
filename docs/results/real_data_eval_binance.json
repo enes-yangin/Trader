@@ -1,0 +1,325 @@
+{
+  "run_at_utc": "2026-10-02 15:39",
+  "exchange": "binance",
+  "timeframe": "1d",
+  "horizon_bars": 20,
+  "pt_mult": 2.5,
+  "sl_mult": 1.0,
+  "features": "technical + microstructure + smoothing",
+  "statarb_round_trip_cost": 0.003,
+  "data": {
+    "BTC/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 85446.01
+    },
+    "ETH/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 2696.88
+    },
+    "BNB/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 773.78
+    },
+    "SOL/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 120.08
+    },
+    "XRP/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 1.5071
+    },
+    "ADA/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 0.2517
+    },
+    "DOGE/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 0.09503
+    },
+    "AVAX/USDT": {
+      "rows": 1825,
+      "from": "2021-10-04",
+      "to": "2026-10-02",
+      "last_close": 11.116
+    }
+  },
+  "directional": {
+    "BTC/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 1022,
+      "wins": 482,
+      "pooled_hit_rate": 0.4716,
+      "base_rate_up": 0.5429,
+      "best_constant_hit_rate": 0.5429,
+      "pct_windows_above_50": 50.0,
+      "naive_p": 0.9675,
+      "n_eff": 51,
+      "p_eff": 0.7121
+    },
+    "ETH/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 983,
+      "wins": 539,
+      "pooled_hit_rate": 0.5483,
+      "base_rate_up": 0.4524,
+      "best_constant_hit_rate": 0.5476,
+      "pct_windows_above_50": 66.7,
+      "naive_p": 0.0013,
+      "n_eff": 49,
+      "p_eff": 0.2841
+    },
+    "BNB/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 1009,
+      "wins": 437,
+      "pooled_hit_rate": 0.4331,
+      "base_rate_up": 0.5781,
+      "best_constant_hit_rate": 0.5781,
+      "pct_windows_above_50": 33.3,
+      "naive_p": 1.0,
+      "n_eff": 50,
+      "p_eff": 0.8389
+    },
+    "SOL/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 1048,
+      "wins": 485,
+      "pooled_hit_rate": 0.4628,
+      "base_rate_up": 0.52,
+      "best_constant_hit_rate": 0.52,
+      "pct_windows_above_50": 50.0,
+      "naive_p": 0.9927,
+      "n_eff": 52,
+      "p_eff": 0.7558
+    },
+    "XRP/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 989,
+      "wins": 567,
+      "pooled_hit_rate": 0.5733,
+      "base_rate_up": 0.4143,
+      "best_constant_hit_rate": 0.5857,
+      "pct_windows_above_50": 83.3,
+      "naive_p": 0.0,
+      "n_eff": 49,
+      "p_eff": 0.1958
+    },
+    "ADA/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 1005,
+      "wins": 565,
+      "pooled_hit_rate": 0.5622,
+      "base_rate_up": 0.4229,
+      "best_constant_hit_rate": 0.5771,
+      "pct_windows_above_50": 66.7,
+      "naive_p": 0.0,
+      "n_eff": 50,
+      "p_eff": 0.2399
+    },
+    "DOGE/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 1016,
+      "wins": 566,
+      "pooled_hit_rate": 0.5571,
+      "base_rate_up": 0.4552,
+      "best_constant_hit_rate": 0.5448,
+      "pct_windows_above_50": 83.3,
+      "naive_p": 0.0002,
+      "n_eff": 50,
+      "p_eff": 0.2399
+    },
+    "AVAX/USDT": {
+      "n_windows": 6,
+      "train_size": 585,
+      "test_size": 175,
+      "test_from": "2023-06-30",
+      "test_to": "2026-05-14",
+      "test_bars": 1050,
+      "signals": 1033,
+      "wins": 519,
+      "pooled_hit_rate": 0.5024,
+      "base_rate_up": 0.4686,
+      "best_constant_hit_rate": 0.5314,
+      "pct_windows_above_50": 66.7,
+      "naive_p": 0.4505,
+      "n_eff": 51,
+      "p_eff": 0.5
+    }
+  },
+  "statarb": {
+    "ETH/USDT": {
+      "rows": 1825,
+      "cointegrated_5pct": false,
+      "eg_adf_stat": -2.62,
+      "best_params": {
+        "entry": 1.5,
+        "exit": 0.5
+      },
+      "n_trials": 6,
+      "holdout_trades": 1,
+      "holdout_wins": 1,
+      "holdout_win_rate": 1.0,
+      "holdout_total_pnl": 0.2331,
+      "raw_p": 0.5,
+      "deflated_p": 0.9844
+    },
+    "BNB/USDT": {
+      "rows": 1825,
+      "cointegrated_5pct": false,
+      "eg_adf_stat": -1.679,
+      "best_params": {
+        "entry": 1.5,
+        "exit": 0.25
+      },
+      "n_trials": 6,
+      "holdout_trades": 1,
+      "holdout_wins": 1,
+      "holdout_win_rate": 1.0,
+      "holdout_total_pnl": 0.1941,
+      "raw_p": 0.5,
+      "deflated_p": 0.9844
+    },
+    "SOL/USDT": {
+      "rows": 1825,
+      "cointegrated_5pct": false,
+      "eg_adf_stat": -1.883,
+      "best_params": {
+        "entry": 1.5,
+        "exit": 0.5
+      },
+      "n_trials": 6,
+      "holdout_trades": 1,
+      "holdout_wins": 1,
+      "holdout_win_rate": 1.0,
+      "holdout_total_pnl": 0.1937,
+      "raw_p": 0.5,
+      "deflated_p": 0.9844
+    },
+    "XRP/USDT": {
+      "rows": 1825,
+      "cointegrated_5pct": false,
+      "eg_adf_stat": -1.689,
+      "best_params": {
+        "entry": 2.0,
+        "exit": 0.5
+      },
+      "n_trials": 6,
+      "holdout_trades": 0,
+      "holdout_wins": 0,
+      "holdout_win_rate": 0.0,
+      "holdout_total_pnl": 0.0,
+      "raw_p": 1.0,
+      "deflated_p": 1.0
+    },
+    "ADA/USDT": {
+      "rows": 1825,
+      "cointegrated_5pct": false,
+      "eg_adf_stat": -2.901,
+      "best_params": {
+        "entry": 1.5,
+        "exit": 0.5
+      },
+      "n_trials": 6,
+      "holdout_trades": 1,
+      "holdout_wins": 0,
+      "holdout_win_rate": 0.0,
+      "holdout_total_pnl": -0.4249,
+      "raw_p": 1.0,
+      "deflated_p": 1.0
+    },
+    "DOGE/USDT": {
+      "rows": 1825,
+      "cointegrated_5pct": false,
+      "eg_adf_stat": -2.928,
+      "best_params": {
+        "entry": 2.5,
+        "exit": 0.25
+      },
+      "n_trials": 6,
+      "holdout_trades": 1,
+      "holdout_wins": 0,
+      "holdout_win_rate": 0.0,
+      "holdout_total_pnl": -0.0287,
+      "raw_p": 1.0,
+      "deflated_p": 1.0
+    },
+    "AVAX/USDT": {
+      "rows": 1825,
+      "cointegrated_5pct": false,
+      "eg_adf_stat": -1.943,
+      "best_params": {
+        "entry": 2.5,
+        "exit": 0.25
+      },
+      "n_trials": 6,
+      "holdout_trades": 1,
+      "holdout_wins": 1,
+      "holdout_win_rate": 1.0,
+      "holdout_total_pnl": 0.3607,
+      "raw_p": 0.5,
+      "deflated_p": 0.9844
+    }
+  },
+  "errors": {},
+  "directional_pooled": {
+    "symbols": 8,
+    "signals": 8105,
+    "wins": 4160,
+    "hit_rate": 0.5133,
+    "symbols_beating_constant_baseline": [
+      "ETH/USDT",
+      "DOGE/USDT"
+    ],
+    "symbols_significant_p_eff": []
+  },
+  "statarb_passed_shield": []
+}

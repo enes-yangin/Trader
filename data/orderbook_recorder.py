@@ -52,6 +52,8 @@ class OrderBookRecorder:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._snapshot_count: int = 0
+        self._buffer: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Public API
@@ -76,7 +78,8 @@ class OrderBookRecorder:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=timeout)
-            log.info(f"OrderBookRecorder durdu ({self._snapshot_count} snapshot)")
+        self.flush()
+        log.info(f"OrderBookRecorder durdu ({self._snapshot_count} snapshot)")
 
     @property
     def running(self) -> bool:
@@ -89,10 +92,12 @@ class OrderBookRecorder:
             return None
         self._append(snap)
         self._snapshot_count += 1
+        self.flush()
         return snap
 
     def load_history(self) -> pd.DataFrame:
         """Tüm kayıtlı snapshot'ları DataFrame olarak döndür."""
+        self.flush()  # Make sure any buffered data is saved before loading
         if not os.path.exists(self._parquet_path):
             return pd.DataFrame(columns=SNAPSHOT_COLS)
         df = pd.read_parquet(self._parquet_path)
@@ -136,23 +141,44 @@ class OrderBookRecorder:
             return None
 
     def _append(self, snap: Dict[str, Any]) -> None:
-        row = pd.DataFrame([snap])
+        with self._lock:
+            self._buffer.append(snap)
+            if len(self._buffer) >= 10000:
+                self._flush_unlocked()
+
+    def flush(self) -> None:
+        """Saves any buffered snapshots to the Parquet file (thread-safe)."""
+        with self._lock:
+            self._flush_unlocked()
+
+    def _flush_unlocked(self) -> None:
+        if not self._buffer:
+            return
+        row = pd.DataFrame(self._buffer)
         row["timestamp"] = row["timestamp"].astype("int64")
         for c in SNAPSHOT_COLS:
             if c not in row.columns:
                 row[c] = np.nan
         write_header = not os.path.exists(self._parquet_path)
-        row[SNAPSHOT_COLS].to_parquet(
-            self._parquet_path, engine="pyarrow", append=True, index=False,
-        )
+        if not write_header:
+            try:
+                existing = pd.read_parquet(self._parquet_path)
+                df = pd.concat([existing, row[SNAPSHOT_COLS]], ignore_index=True)
+            except Exception as e:
+                log.warning(f"Error reading existing parquet {self._parquet_path}, overwriting: {e}")
+                df = row[SNAPSHOT_COLS]
+        else:
+            df = row[SNAPSHOT_COLS]
+        df.to_parquet(self._parquet_path, engine="pyarrow", index=False)
         if write_header:
             meta = {
                 "symbol": self.symbol, "created_at": time.time(),
                 "interval_s": self.interval_s, "depth": self.depth,
-                "first_snapshot_ms": snap["timestamp"],
+                "first_snapshot_ms": int(df["timestamp"].iloc[0]) if len(df) else int(time.time() * 1000),
             }
             with open(self._meta_path, "w") as f:
                 json.dump(meta, f, indent=2)
+        self._buffer.clear()
 
     def _count_existing(self) -> int:
         if not os.path.exists(self._parquet_path):

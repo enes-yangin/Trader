@@ -80,9 +80,21 @@ def fetch_newsapi(query, days=30, limit=100):
     }
     url = f"{NEWSAPI_URL}?{urllib.parse.urlencode(params)}"
     rows = []
+    from utils.retry import with_retry
+
+    @with_retry(exceptions=(urllib.error.URLError, TimeoutError, OSError), retries=3, initial_delay=1.0)
+    def do_request():
+        try:
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as he:
+            if he.code in (400, 401, 403):
+                raise he
+            log.warning(f"NewsAPI HTTP error {he.code}: {he.reason}, retrying...")
+            raise he
+
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
+        data = do_request()
         for a in data.get("articles", []):
             title = a.get("title", "") or ""
             desc = a.get("description", "") or ""

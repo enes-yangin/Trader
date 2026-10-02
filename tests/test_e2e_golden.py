@@ -45,11 +45,14 @@ def test_full_three_model_pipeline_e2e(mock_ccxt_exchange):
     with patch("ccxt.kraken", return_value=mock_ccxt_exchange):
         bundle = train_all("BTC/USDT", with_news=False)
 
-        assert set(bundle["results"].keys()) == {"linear", "xgboost", "lstm"}
+        # Plan item A: LSTM removed from the default training set (cost/benefit
+        # skewed heavily against it on ~1.2k rows); MODEL_MAP is now linear+xgboost.
+        assert set(bundle["results"].keys()) == {"linear", "xgboost"}
+        assert "lstm" not in bundle["results"]
         assert bundle["with_micro"] is True
 
         cmp = compare(bundle)
-        assert len(cmp) == 3
+        assert len(cmp) == 2
         for col in ["train_r2", "test_r2"]:
             assert col in cmp.columns
             assert cmp[col].notna().all()
@@ -59,10 +62,10 @@ def test_full_three_model_pipeline_e2e(mock_ccxt_exchange):
 
         sig = predict_from_bundle(bundle)
         assert sig["consensus"] in ("BUY", "HOLD", "SELL")
-        assert len(sig["details"]) == 3
+        assert len(sig["details"]) == 2
 
         bt = run_all(bundle)
-        assert len(bt) == 3
+        assert len(bt) == 2
         for name, r in bt.items():
             assert np.isfinite(r["metrics"]["total_return"])
             assert r["which"] == "test"

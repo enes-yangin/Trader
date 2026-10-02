@@ -3,6 +3,7 @@ os.environ.setdefault("AI_TRADER_LINEAR_N_TRIALS", "2")
 os.environ.setdefault("AI_TRADER_XGB_N_TRIALS", "2")
 os.environ.setdefault("AI_TRADER_LSTM_N_TRIALS", "1")
 os.environ.setdefault("AI_TRADER_LSTM_OPT_EPOCHS", "1")
+os.environ["AI_TRADER_DYNAMIC_THRESHOLD_FLOOR"] = "0.0"
 
 import numpy as np
 import pandas as pd

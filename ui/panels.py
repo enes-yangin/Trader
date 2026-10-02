@@ -117,35 +117,32 @@ class MetricsPanel(tk.Frame):
         if not bt_results:
             return
 
-        cols = ["Return", "Equity", "Trades", "WinRate", "Sharpe", "MaxDD", "Costs"]
+        cols = ["Return", "Trades", "Sharpe", "MaxDD"]
         hdr = tk.Frame(self.container, bg=BG3)
         hdr.pack(fill="x", pady=(0, 2))
         tk.Label(hdr, text="Model", font=FONT_B, bg=BG3, fg=FG,
-                 width=12, anchor="w").pack(side="left", padx=(8, 0))
+                 width=9, anchor="w").pack(side="left", padx=(8, 0))
         for c in cols:
             tk.Label(hdr, text=c, font=FONT_S, bg=BG3, fg=FG2,
-                     width=10, anchor="e").pack(side="left")
+                     width=7, anchor="e").pack(side="left")
 
         for name, r in bt_results.items():
             m = r["metrics"]
             row = tk.Frame(self.container, bg=BG2)
             row.pack(fill="x", pady=1)
             tk.Label(row, text=name, font=FONT, bg=BG2, fg=FG,
-                     width=12, anchor="w").pack(side="left", padx=(8, 0))
+                     width=9, anchor="w").pack(side="left", padx=(8, 0))
 
             ret_c = GREEN if m["total_return"] > 0 else RED if m["total_return"] < 0 else FG2
             vals = [
-                (f"{m['total_return']:+.2f}%", ret_c),
-                (f"${m['final_equity']:,.0f}", FG2),
+                (f"{m['total_return']:+.1f}%", ret_c),
                 (f"{m['n_trades']}", FG2),
-                (f"{m['win_rate']:.0f}%", GREEN if m["win_rate"] > 50 else FG2),
-                (f"{m['sharpe']:.2f}", BLUE),
+                (f"{m['sharpe']:.1f}", BLUE),
                 (f"{m['max_drawdown']:.1f}%", RED if m["max_drawdown"] < -10 else FG2),
-                (f"${m['total_costs']:,.0f}", YELLOW),
             ]
             for txt, clr in vals:
                 tk.Label(row, text=txt, font=FONT, bg=BG2, fg=clr,
-                         width=10, anchor="e").pack(side="left")
+                         width=7, anchor="e").pack(side="left")
 
     def clear(self):
         for w in self.container.winfo_children():
@@ -250,3 +247,50 @@ class NewsAnalysisPanel(tk.Frame):
 
     def clear(self):
         self.update(None)
+
+
+class ValidationShieldPanel(tk.Frame):
+    def __init__(self, parent, **kw):
+        super().__init__(parent, bg=BG2, **kw)
+        self.columnconfigure(0, weight=1)
+        tk.Label(self, text="Validation Shield", font=FONT_B, bg=BG2,
+                 fg=FG).pack(anchor="w", padx=10, pady=(8, 4))
+        self.container = tk.Frame(self, bg=BG2)
+        self.container.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+
+        self.lbl_status = tk.Label(self.container, text="NO EDGE / NOT TRAINED", font=FONT_B, bg=BG2, fg=FG2)
+        self.lbl_status.pack(anchor="w", pady=2)
+        
+        self.lbl_pbo = tk.Label(self.container, text="PBO: ---", font=FONT_S, bg=BG2, fg=FG2)
+        self.lbl_pbo.pack(anchor="w", pady=1)
+
+        self.lbl_pvalue = tk.Label(self.container, text="Deflated p-value: ---", font=FONT_S, bg=BG2, fg=FG2)
+        self.lbl_pvalue.pack(anchor="w", pady=1)
+        
+        self.lbl_cpcv_sharpe = tk.Label(self.container, text="CPCV Sharpe: ---", font=FONT_S, bg=BG2, fg=FG2)
+        self.lbl_cpcv_sharpe.pack(anchor="w", pady=1)
+
+    def update(self, bundle):
+        if not bundle:
+            self.clear()
+            return
+            
+        pbo = bundle.get("pbo", 100.0)
+        deflated_p = bundle.get("deflated_p", 1.0)
+        cpcv_sharpe = bundle.get("cpcv_mean_sharpe", 0.0)
+        shield_passed = bundle.get("shield_passed", False)
+        
+        if shield_passed:
+            self.lbl_status.config(text="SHIELD PASSED (EDGE)", fg=GREEN)
+        else:
+            self.lbl_status.config(text="NO EDGE (FAILED SHIELD)", fg=RED)
+            
+        self.lbl_pbo.config(text=f"PBO (Overfit Prob): {pbo:.1f}%")
+        self.lbl_pvalue.config(text=f"Deflated p-value: {deflated_p:.4f}")
+        self.lbl_cpcv_sharpe.config(text=f"CPCV Mean Sharpe: {cpcv_sharpe:+.3f}")
+
+    def clear(self):
+        self.lbl_status.config(text="NO EDGE / NOT TRAINED", fg=FG2)
+        self.lbl_pbo.config(text="PBO: ---")
+        self.lbl_pvalue.config(text="Deflated p-value: ---")
+        self.lbl_cpcv_sharpe.config(text="CPCV Sharpe: ---")
